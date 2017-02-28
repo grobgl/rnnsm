@@ -5,6 +5,17 @@ import pandas as pd
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from dateutil import parser
+from sklearn.preprocessing import StandardScaler
+import datetime
+import time
+import numpy as np
+import pandas as pd
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+from dateutil import parser
+from sklearn.preprocessing import StandardScaler
+
+trainPeriod = ["2015-02-01", "2016-02-01"]
 
 def makeunixtime(val):
     try:
@@ -37,8 +48,8 @@ def replaceNanStartUserTime(df, targets):
     df = df.groupby('customerId').apply(_calcStartUserTimeNan)
     return _discardNanStartUserTime(df, targets)
 
+
 def normaliseData(df,targets):
-    trainPeriod = ["2015-02-01", "2016-02-01"]
     trainDF = df.copy()
     trainTargets = targets.copy()
     
@@ -55,7 +66,17 @@ def normaliseData(df,targets):
     
     return trainDF, trainTargets
 
-def getTrainTest():
+
+def trainTestSplitCust(X, y, test_size=0.33, random_state=42):
+    train_cust, test_cust, y_train, y_test = X_test_split(y.keys(), y, test_size=test_size, random_state=random_state)
+    
+    X_train = X[X.customerId.isin(train_cust)]
+    X_test = X[X.customerId.isin(test_cust)]
+    
+    return X_train, X_test, y_train, y_test
+
+
+def getMergedSessionData():
     trainDF = pd.read_pickle('../../data/trainFebToFebCensoredMergedDF.pkl')
     targetDF = pd.read_pickle('../../data/trainFebToFebTargetsMergedDF.pkl')
     
@@ -67,9 +88,74 @@ def getTrainTest():
     
     train, targets = normaliseData(trainDF, targetSeq)
     
-    train_cust, test_cust, y_train, y_test = train_test_split(targets.keys(), targets, test_size=0.33, random_state=42)
+    return train, targets
+
+
+'''
+    Aggregate users into categories listed below (use via aggrUsers)
+'''
+def _aggrUser(user):
+    nSessions = len(user)
+    period = makeunixtime(trainPeriod[1]) - user.startTime.values[0]
+    frequency = 0
+    if period > 0:
+        frequency = nSessions/period
+    recency = user.returnTime.values[-1]
+    avgViewOnly = user.viewonly.sum()/nSessions
+    avgChangeThumbnail = user.changeThumbnail.sum()/nSessions
+    avgImageZoom = user.imageZoom.sum()/nSessions
+    avgWatchVideo = user.watchVideo.sum()/nSessions
+    avgView360 = user.view360.sum()/nSessions
+    mobile = (user.device == 'mobile').sum()/nSessions
+    desktop = (user.device == 'desktop').sum()/nSessions
+    android = (user.device == 'android').sum()/nSessions
+    ios = (user.device == 'ios').sum()/nSessions
     
-    X_train = train[train.customerId.isin(train_cust)]
-    X_test = train[train.customerId.isin(test_cust)]
+    return pd.DataFrame({
+        'nSessions': nSessions, 
+        'period': period,
+        'frequency': frequency,
+        'recency': recency,
+        'avgViewOnly': avgViewOnly,
+        'avgChangeThumbnail': avgChangeThumbnail,
+        'avgImageZoom': avgImageZoom,
+        'avgWatchVideo': avgWatchVideo,
+        'avgView360': avgView360,
+        'device[mobile]': mobile,
+        'device[desktop]': desktop,
+        'device[android]': android,
+        'device[ios]': ios
+    },index=[0])
+
+def aggrUsers(df):
+    aggr = df.groupby('customerId').apply(_aggrUser)
+    aggr.reset_index(inplace=True)
+    del aggr['customerId']
+    del aggr['level_1']
+    return aggr
+
+
+def filterNanReturnTimeUsers(X, y):
+    nanTrain = y[y.isnull()].index
+
+    return X[~X.customerId.isin(nanTrain)], y[~y.isnull()]
+
+
+def getAggrSet(replace_nans=True):
+    if replace_nans:
+        X = pd.read_pickle('../../data/usersAggrNonanFebToFebXDF.pkl')
+        y = pd.read_pickle('../../data/usersAggrNonanFebToFebYDF.pkl')
+        return X, y
+    else:
+        X = pd.read_pickle('../../data/usersAggrFebToFebXDF.pkl')
+        y = pd.read_pickle('../../data/usersAggrFebToFebYDF.pkl')
+        return X, y
+
+
+def splitAndNormaliseAggr(X, y, test_size=0.33, random_state=42):
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+    ss = StandardScaler()
+    X_train_s = ss.fit_transform(X_train)
+    X_test_s = ss.fit_transform(X_test)
     
-    return X_train, X_test, y_train, y_test 
+    return X_train_s, X_test_s, y_train.values, y_test.values
