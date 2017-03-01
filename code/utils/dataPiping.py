@@ -26,10 +26,15 @@ def makeunixtime(val):
 def unixtimetostr(val):
     return datetime.datetime.fromtimestamp(int(val)).strftime('%Y-%m-%d %H:%M:%S')
 
+unixTrainPeriod = list(map(makeunixtime, trainPeriod))
 
-def _discardNanStartUserTime(df,targets):
+
+''' 
+    Calculate missing startUserTime values if possible (by applying difference between user's other startUserTime and startTime values)
+'''
+def _discardNanStartUserTime(df):
     nanStartUserTimeCust = df[df.startUserTime.isnull()].customerId.unique()
-    return df[~df.customerId.isin(nanStartUserTimeCust)], targets[~targets.index.isin(nanStartUserTimeCust)]
+    return df[~df.customerId.isin(nanStartUserTimeCust)]
 
 def _calcStartUserTimeNan(g):
     isNan = g.startUserTime.isnull()
@@ -44,9 +49,9 @@ def _calcStartUserTimeNan(g):
         
     return g
 
-def replaceNanStartUserTime(df, targets):
+def replaceNanStartUserTime(df):
     df = df.groupby('customerId').apply(_calcStartUserTimeNan)
-    return _discardNanStartUserTime(df, targets)
+    return _discardNanStartUserTime(df)
 
 
 def normaliseData(df,targets):
@@ -92,15 +97,16 @@ def getMergedSessionData():
 
 
 '''
-    Aggregate users into categories listed below (use via aggrUsers)
+    Aggregate users
 '''
+
 def _aggrUser(user):
     nSessions = len(user)
-    period = makeunixtime(trainPeriod[1]) - user.startTime.values[0]
+    period = unixTrainPeriod[1] - user.startTime.values[0]
     frequency = 0
     if period > 0:
         frequency = nSessions/period
-    recency = user.returnTime.values[-1]
+    recency = unixTrainPeriod[1] - user.endTime.values[-1]
     avgViewOnly = user.viewonly.sum()/nSessions
     avgChangeThumbnail = user.changeThumbnail.sum()/nSessions
     avgImageZoom = user.imageZoom.sum()/nSessions
@@ -110,6 +116,7 @@ def _aggrUser(user):
     desktop = (user.device == 'desktop').sum()/nSessions
     android = (user.device == 'android').sum()/nSessions
     ios = (user.device == 'ios').sum()/nSessions
+    returnTime = user.returnTime.values[-1]
     
     return pd.DataFrame({
         'nSessions': nSessions, 
@@ -124,32 +131,41 @@ def _aggrUser(user):
         'device[mobile]': mobile,
         'device[desktop]': desktop,
         'device[android]': android,
-        'device[ios]': ios
+        'device[ios]': ios,
+        'returnTime': returnTime
     },index=[0])
 
 def aggrUsers(df):
     aggr = df.groupby('customerId').apply(_aggrUser)
-    aggr.reset_index(inplace=True)
-    del aggr['customerId']
-    del aggr['level_1']
     return aggr
 
+def createAggrDataset():
+    df = pd.read_pickle('../../data/mergedSessionDF.pkl')
+    df = replaceNanStartUserTime(df)
 
-def filterNanReturnTimeUsers(X, y):
-    nanTrain = y[y.isnull()].index
+    obs_df = df[(df.startUserTime >= makeunixtime(trainPeriod[0])) & (df.startUserTime < makeunixtime(trainPeriod[1]))]
 
-    return X[~X.customerId.isin(nanTrain)], y[~y.isnull()]
+    obs_df_aggr = aggrUsers(obs_df)
+    obs_df_aggr.reset_index(inplace=True)
+    del obs_df_aggr['customerId']
+    del obs_df_aggr['level_1']
+
+    obs_df_aggr_nonan = obs_df_aggr[~obs_df_aggr.returnTime.isnull()]
+    obs_df_aggr_nonan.reset_index(inplace=True)
+
+    y = obs_df_aggr_nonan.returnTime
+    X = obs_df_aggr_nonan.copy()
+    del X['returnTime']
+    del X['index']
+    
+    X.to_pickle('../../data/aggregate/aggrFebNoNanX.pkl')
+    y.to_pickle('../../data/aggregate/aggrFebNoNanY.pkl')
 
 
-def getAggrSet(replace_nans=True):
-    if replace_nans:
-        X = pd.read_pickle('../../data/usersAggrNonanFebToFebXDF.pkl')
-        y = pd.read_pickle('../../data/usersAggrNonanFebToFebYDF.pkl')
-        return X, y
-    else:
-        X = pd.read_pickle('../../data/usersAggrFebToFebXDF.pkl')
-        y = pd.read_pickle('../../data/usersAggrFebToFebYDF.pkl')
-        return X, y
+def readAggrData():
+    X = pd.read_pickle('../../data/aggregate/aggrFebNoNanX.pkl')
+    y = pd.read_pickle('../../data/aggregate/aggrFebNoNanY.pkl')
+    return X, y
 
 
 def splitAndNormaliseAggr(X, y, test_size=0.33, random_state=42):
