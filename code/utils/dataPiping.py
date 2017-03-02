@@ -167,6 +167,15 @@ def readAggrData():
     y = pd.read_pickle('../../data/aggregate/aggrFebNoNanY.pkl')
     return X, y
 
+def readAggrCoxPhData(include_cens=False):
+    if include_cens:
+        X = pd.read_pickle('../../data/aggregate/aggrFebCoxPhCensX.pkl')
+        y = pd.read_pickle('../../data/aggregate/aggrFebCoxPhCensY.pkl')
+        return X, y
+    else:
+        X = pd.read_pickle('../../data/aggregate/aggrFebCoxPhNoNanX.pkl')
+        y = pd.read_pickle('../../data/aggregate/aggrFebCoxPhNoNanY.pkl')
+        return X, y
 
 def splitAndNormaliseAggr(X, y, test_size=0.33, random_state=42):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
