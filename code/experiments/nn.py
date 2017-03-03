@@ -21,11 +21,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import mean_squared_error
 
 X, y = readAggrData()
+del X['recency']
 X_train, X_test, y_train, y_test = splitAndNormaliseAggr(X,y)
 
 def wide_model():
     model = Sequential()
-    model.add(Dense(18, input_dim=X.shape[1], init='normal', activation='relu'))
+    model.add(Dense(20, input_dim=X.shape[1], init='normal', activation='relu'))
     model.add(Dense(1, init='normal')) # no activation/linear activation
     model.compile(loss='mean_squared_error', optimizer='adam')
     return model
@@ -33,7 +34,9 @@ def wide_model():
 def deep_model():
     model = Sequential()
     model.add(Dense(X.shape[1], input_dim=X.shape[1], init='normal', activation='relu'))
+    model.add(Dropout(0.2))
     model.add(Dense(6, init='normal', activation='relu'))
+    model.add(Dropout(0.2))
     model.add(Dense(1, init='normal')) # no activation/linear activation
     model.compile(loss='mean_squared_error', optimizer='adam')
     return model
@@ -41,8 +44,11 @@ def deep_model():
 def deeper_model():
     model = Sequential()
     model.add(Dense(20, input_dim=X.shape[1], init='normal', activation='relu'))
+    model.add(Dropout(0.2))
     model.add(Dense(13, init='normal', activation='relu'))
+    model.add(Dropout(0.2))
     model.add(Dense(6, init='normal', activation='relu'))
+    model.add(Dropout(0.2))
     model.add(Dense(1, init='normal')) # no activation/linear activation
     model.compile(loss='mean_squared_error', optimizer='adam')
     return model
