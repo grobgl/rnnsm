@@ -1,2 +1,5 @@
 data
+logs
 code/sample
+__pycache__/
+*.py[cod]
