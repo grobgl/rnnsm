@@ -1,0 +1,58 @@
+logNumSessions                -0.417799
+numSessions                   -0.246393
+
+recency                        0.375377
+
+logSessionLen_avg             -0.193007
+logSessionLen_wght_avg        -0.155557
+sessionLen_avg                -0.077258
+sessionLen_wght_avg           -0.065339
+
+dayOfMonth_wght_avg           -0.179790
+dayOfMonth_avg                -0.049760
+
+logDeltaPrev_avg              -0.157903
+logDeltaPrev_wght_avg         -0.143015
+deltaPrev_wght_avg             0.103403
+deltaPrev_avg                  0.100189
+
+logNumInteractions_avg        -0.157214
+logNumInteractions_wght_avg   -0.142146
+numInteractions_avg           -0.073517
+numInteractions_wght_avg      -0.066586
+
+logNumItemsViewed_avg         -0.155848
+logNumItemsViewed_wght_avg    -0.132014
+numItemsViewed_avg            -0.062480
+numItemsViewed_wght_avg       -0.060333
+
+deviceIos_wght                -0.094410
+deviceDesktop_wght             0.042550
+deviceMobile_wght              0.033986
+deviceUnknown_wght            -0.033010
+deviceAndroid_wght             0.009252
+
+deviceIos                     -0.085896
+deviceUnknown                 -0.044337
+deviceMobile                   0.034347
+deviceDesktop                  0.034314
+deviceAndroid                  0.014002
+
+logNumDivisions_wght_avg      -0.081054
+logNumDivisions_avg           -0.079338
+numDivisions_wght_avg         -0.061160
+numDivisions_avg              -0.049806
+
+dayOfWeek_wght_avg            -0.076913
+dayOfWeek_avg                 -0.012045
+
+price_avg                      0.048213
+price_wght_avg                 0.024070
+logPrice_wght_avg             -0.019962
+logPrice_avg                  -0.013860
+
+deltaLogDeltaPrev             -0.046677
+deltaDeltaPrev                -0.045160
+
+hourOfDay_wght_avg            -0.033268
+hourOfDay_avg                 -0.014216
