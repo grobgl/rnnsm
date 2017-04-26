@@ -12,7 +12,7 @@ import pickle
 import os
 import sys
 sys.path.insert(0, '../utils')
-# from plot_format import *
+from plot_format import *
 
 _RESULT_PATH = '../../results/churn/logistic_regression/'
 
@@ -224,26 +224,26 @@ def upperfirst(x):
 
 def plotRfeRes(width=1, height=None):
     # 'logReg_rfe_all'
-    res = pickle.load(open('{}logisticRegression_rfe.pkl'.format(_RESULT_PATH), 'rb'))
+    res_all = pickle.load(open('{}logReg_rfe_all.pkl'.format(_RESULT_PATH), 'rb'))
     # 'logReg_rfe_avg'
-    res_noWghtRet = pickle.load(open('{}logisticRegression_noWghtRet_rfe.pkl'.format(_RESULT_PATH), 'rb'))
+    res_noWghtRet = pickle.load(open('{}logReg_rfe_avg.pkl'.format(_RESULT_PATH), 'rb'))
     # 'logReg_rfe_wght'
-    res_onlyWghtRet = pickle.load(open('{}logisticRegression_onlyWghtRet_rfe.pkl'.format(_RESULT_PATH), 'rb'))
+    res_onlyWghtRet = pickle.load(open('{}logReg_rfe_wght.pkl'.format(_RESULT_PATH), 'rb'))
 
-    numFeat = len(res)
-    auc = [r['scores']['auc'] for r in res]
-    auc_noWghtRet = [r['scores']['auc'] for r in res_noWghtRet]
-    auc_onlyWghtRet = [r['scores']['auc'] for r in res_onlyWghtRet]
-    acc = [r['scores']['accuracy'] for r in res]
-    acc_noWghtRet = [r['scores']['accuracy'] for r in res_noWghtRet]
-    acc_onlyWghtRet = [r['scores']['accuracy'] for r in res_onlyWghtRet]
+    numFeat = len(res_all['accuracy'])
+    auc_all = res_all['roc_auc']
+    auc_noWghtRet = res_noWghtRet['roc_auc']
+    auc_onlyWghtRet = res_onlyWghtRet['roc_auc']
+    acc_all = res_all['accuracy']
+    acc_noWghtRet = res_noWghtRet['accuracy']
+    acc_onlyWghtRet = res_onlyWghtRet['accuracy']
 
     fig, ax1 = newfig(width, height, ax_pos=121)
     ax2 = fig.add_subplot(122)
 
-    ax1.plot(range(1, numFeat+1), auc, label='AUC')
-    ax1.plot(range(1, numFeat+1), acc, label='Classification accuracy')
-    ax2.plot(range(1, numFeat+1), acc, label='Classification accuracy\n(i) all features')
+    ax1.plot(range(1, numFeat+1), auc_all, label='AUC')
+    ax1.plot(range(1, numFeat+1), acc_all, label='Classification accuracy')
+    ax2.plot(range(1, numFeat+1), acc_all, label='Classification accuracy\n(i) all features')
     ax2.plot(range(1, len(acc_noWghtRet) + 1), acc_noWghtRet, label='Classification accuracy\n(ii) avg. return time')
     ax2.plot(range(1, len(acc_onlyWghtRet) + 1), acc_onlyWghtRet, label='Classification accuracy\n(iii) wt. avg. return time')
 
@@ -268,15 +268,17 @@ def plotL1L2GridRes(width=1, height=None):
     cValuesL1 = np.logspace(np.log10(2e-4),0,800)
     cValuesL2 = np.logspace(-6,0,800)
 
-    accL1 = gridL1.cv_results_['mean_test_score']
-    accL1Std = gridL1.cv_results_['std_test_score']
-    accL2 = gridL2.cv_results_['mean_test_score']
-    accL2Std = gridL2.cv_results_['std_test_score']
+    accL1 = gridL1['accuracy'].cv_results_['mean_test_score']
+    accL2 = gridL2['accuracy'].cv_results_['mean_test_score']
+    aucL1 = gridL1['roc_auc'].cv_results_['mean_test_score']
+    aucL2 = gridL2['roc_auc'].cv_results_['mean_test_score']
 
     fig, ax = newfig(width, height)
 
-    ax.plot(cValuesL1, accL1, label='L1 accuracy', color='C1')
-    ax.plot(cValuesL2, accL2, label='L2 accuracy', color='C2')
+    ax.plot(cValuesL1, accL1, label='L1 accuracy')
+    ax.plot(cValuesL2, accL2, label='L2 accuracy')
+    ax.plot(cValuesL1, aucL1, label='L1 AUC')
+    ax.plot(cValuesL2, aucL2, label='L2 AUC')
 
     ax.set_xlabel('Regularisation parameter')
     ax.legend(loc='center right', bbox_to_anchor=(1,.68))
