@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib as mpl
-# mpl.use('pgf')
+mpl.use('pgf')
 
 def figsize(width, height=None):
     fig_width_pt = 426.79135                        # Get this from LaTeX using \the\textwidth
