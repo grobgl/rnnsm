@@ -12,6 +12,10 @@ actPeriod = {
     'end': pd.Timestamp('2016-02-01')
 }
 
+predPeriod = {
+    'start': pd.Timestamp('2016-02-01'),
+    'end': pd.Timestamp('2016-06-01')
+}
 
 features = ['numSessions', 'deviceAndroid', 'deviceIos', 'deviceDesktop', 'deviceMobile', 'deviceUnknown',
             'deviceAndroid_wght', 'deviceIos_wght', 'deviceDesktop_wght', 'deviceMobile_wght', 'deviceUnknown_wght',
@@ -19,7 +23,8 @@ features = ['numSessions', 'deviceAndroid', 'deviceIos', 'deviceDesktop', 'devic
             'dayOfMonth_wght_avg', 'dayOfWeek_avg', 'dayOfWeek_wght_avg', 'hourOfDay_avg',
             'hourOfDay_wght_avg', 'sessionLen_avg', 'sessionLen_wght_avg', 'price_avg',
             'price_wght_avg', 'numInteractions_avg', 'numInteractions_wght_avg', 'numItemsViewed_avg',
-            'numItemsViewed_wght_avg', 'numDivisions_avg', 'numDivisions_wght_avg']
+            'numItemsViewed_wght_avg', 'numDivisions_avg', 'numDivisions_wght_avg',
+	    'deltaNextHours']
 
 def createChurnDS():
     df = pd.read_pickle('../../data/cleaned/stage1_obs_pred.pkl')
@@ -42,8 +47,6 @@ def createChurnDS():
     df['logNumSessions'] = np.log(df.numSessions)
     df['logDeltaPrev_avg'] = np.log(df.deltaPrev_avg + 1)
     df['logDeltaPrev_wght_avg'] = np.log(df.deltaPrev_wght_avg + 1)
-    df['deltaDeltaPrev'] = df.deltaPrev_avg - df.deltaPrev_wght_avg
-    df['deltaLogDeltaPrev'] = df.logDeltaPrev_avg - df.logDeltaPrev_wght_avg
     df['logSessionLen_avg'] = np.log(df.sessionLen_avg + 1)
     df['logSessionLen_wght_avg'] = np.log(df.sessionLen_wght_avg + 1)
     df['logPrice_avg'] = np.log(df.price_avg)
@@ -105,6 +108,11 @@ def _aggregateCust(sess):
     sess['price_avg'].values[0] = sess.avgPrice.mean()
     sess['price_wght_avg'].values[0] = np.average(sess.avgPrice, weights=invRecency)
 
+    if not sess.deltaNext.tail(1).isnull().values[0]:
+        sess['deltaNextHours'].values[0] = max(0,sess.deltaNext.values[0] / np.timedelta64(1,'h'))
+    else:
+        sess['deltaNextHours'].values[0] = (predPeriod['end'] - sess.startUserTime.values[-1]) / np.timedelta64(1,'h')
+
     sess['numItemsViewed_avg'].values[0] = sess.viewonly.mean()
     sess['numItemsViewed_wght_avg'].values[0] = np.average(sess.viewonly, weights=invRecency)
     sess['numDivisions_avg'].values[0] = sess.numberdivisions.mean()
@@ -143,3 +151,4 @@ def parallelizeDataframe(df, func, num_cores=8):
 def combineDailySessionsPar(df):
     df['numSessions'] = 0
     return parallelizeDataframe(df, combineDailySessions)
+
