@@ -17,13 +17,14 @@ predPeriod = {
 }
 
 
-features = ['observed','numSessions', 'deviceAndroid', 'deviceIos', 'deviceDesktop', 'deviceMobile', 'deviceUnknown',
+features = ['numSessions', 'deviceAndroid', 'deviceIos', 'deviceDesktop', 'deviceMobile', 'deviceUnknown',
             'deviceAndroid_wght', 'deviceIos_wght', 'deviceDesktop_wght', 'deviceMobile_wght', 'deviceUnknown_wght',
-            'deltaNextHours','recency', 'deltaPrev_avg', 'deltaPrev_wght_avg', 'dayOfMonth_avg',
+            'recency', 'deltaPrev_avg', 'deltaPrev_wght_avg', 'dayOfMonth_avg',
             'dayOfMonth_wght_avg', 'dayOfWeek_avg', 'dayOfWeek_wght_avg', 'hourOfDay_avg',
             'hourOfDay_wght_avg', 'sessionLen_avg', 'sessionLen_wght_avg', 'price_avg',
             'price_wght_avg', 'numInteractions_avg', 'numInteractions_wght_avg', 'numItemsViewed_avg',
-            'numItemsViewed_wght_avg', 'numDivisions_avg', 'numDivisions_wght_avg']
+            'numItemsViewed_wght_avg', 'numDivisions_avg', 'numDivisions_wght_avg', 'deltaNextHours', 'observed']
+
 
 def createCoxDS():
     df = pd.read_pickle('../../data/cleaned/stage1_obs_pred.pkl')
@@ -46,9 +47,7 @@ def createCoxDS():
     df['logNumSessions'] = np.log(df.numSessions)
     df['logDeltaPrev_avg'] = np.log(df.deltaPrev_avg + 1)
     df['logDeltaPrev_wght_avg'] = np.log(df.deltaPrev_wght_avg + 1)
-    df['deltaDeltaPrev'] = df.deltaPrev_avg - df.deltaPrev_wght_avg
-    df['deltaLogDeltaPrev'] = df.logDeltaPrev_avg - df.logDeltaPrev_wght_avg
-    df['logSessionLen_avg'] = np.log(df.sessionLen_avg + 1)
+    f['logSessionLen_avg'] = np.log(df.sessionLen_avg + 1)
     df['logSessionLen_wght_avg'] = np.log(df.sessionLen_wght_avg + 1)
     df['logPrice_avg'] = np.log(df.price_avg)
     df['logPrice_wght_avg'] = np.log(df.price_wght_avg)

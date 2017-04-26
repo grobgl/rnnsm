@@ -3,60 +3,86 @@ import pandas as pd
 from patsy import dmatrices
 from sklearn import metrics
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 
 class ChurnData:
-    def __init__(self, features=None, dataset='churn'):
-        self.df = pd.read_pickle('../../data/churn/churn.pkl')
-        self.dataset = dataset
-        self.pred_col = 'churned'
+    def __init__(self, features=None, predict='churned'):
+        """
+        Provides scaled and split aggregated customer session data
 
-        if dataset=='cox':
-            self.df = pd.read_pickle('../../data/churn/cox_churn.pkl')
-            self.pred_col = 'deltaNextHours'
+        :features: list of features to include
+        :predict: value to predict: 'churned' or 'deltaNextHours'
+        """
+
+        self.df = pd.read_pickle('../../data/churn/churn.pkl')
+        self.pred_col = predict
 
         if features is None:
-            features = list(set(self.df.columns) - set(['customerId','churned','deltaNextHours','observed']))
+            features = list(set(self.df.columns) - set(['customerId','churned','deltaNextHours']))
+
         self.setFeatures(features)
 
 
-    def setFeatures(self, features, intercept=False):
+    def setFeatures(self, features):
+        """
+        Select subset of features from original dataset. Re-creates all X/y sets accordingly
+        """
         self.features = np.array(features)
 
-        if self.dataset == 'churn':
-            self.y, self.X = dmatrices(
-                    'churned~' + '+'.join(self.features) + ('' if intercept else '-1'),
-                    self.df)
-        elif self.dataset=='cox':
-            self.y, self.X = dmatrices('deltaNextHours~' + '+'.join(self.features) + ('+observed-1'), self.df)
+        # set deltaNextHours as first column in X
+        self.y, self.X = dmatrices(
+                'churned~' + 'deltaNextHours+' + '+'.join(self.features) + '-1',
+                self.df)
 
         # workaround for missing pickling support in patsy
         self.X = np.array(self.X.tolist())
         self.y = np.array(self.y.tolist())
 
-        if intercept:
-            np.insert(self.features, 0, 'intercept')
-
-        self.X_train0, self.X_test0, self.y_train, self.y_test = train_test_split(
-                self.X, self.y, test_size=0.2, random_state=42)
+        # use stratified split
+        trainI, testI  = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.X, self.y))
+        self.X_train0, self.X_test0, self.y_train, self.y_test = self.X[trainI], self.X[testI], self.y[trainI], self.y[testI]
 
         # scale values
         self.scaler = StandardScaler()
         self.X_train = self.scaler.fit_transform(self.X_train0)
         self.X_test = self.scaler.transform(self.X_test0)
 
-        if self.dataset=='cox':
-            # un-scale observed column
-            self.X_train.T[-1] = self.X_train0.T[-1].astype('bool')
-            self.X_test.T[-1] = self.X_test0.T[-1].astype('bool')
+        # un-scale deltaNextHours column
+        self.X_train.T[0] = self.X_train0.T[0]
+        self.X_test.T[0] = self.X_test0.T[0]
 
         # further split training set into train and validation sets
-        self.X_split_train, self.X_split_val, self.y_split_train, self.y_split_val = train_test_split(
-                self.X_train, self.y_train, test_size=0.2, random_state=42)
+        # use stratified split
+        trainI, testI  = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.X_train, self.y_train))
+        self.X_split_train, self.X_split_val, self.y_split_train, self.y_split_val = self.X_train[trainI], self.X_train[testI], self.y_train[trainI], self.y_train[testI]
 
-        if intercept:
-            self.X_train.T[0] = 1
-            self.X_test.T[0] = 1
+        # set features for churned / deltaNextHours prediction
+        if self.pred_col=='churned':
+            # remove deltaNextHours and observed columns
+            self.X = self.X.T[1:].T
+            self.X_train = self.X_train.T[1:].T
+            self.X_test = self.X_test.T[1:].T
+            self.X_split_train = self.X_split_train.T[1:].T
+            self.X_split_val = self.X_split_val.T[1:].T
+        elif self.pred_col=='deltaNextHours':
+            # set y as observed column in X
+            self.X = np.append(self.X.T, self.y).reshape(-1, len(self.y)).T
+            self.X_train = np.append(self.X_train.T, self.y_train).reshape(-1, len(self.y_train)).T
+            self.X_test = np.append(self.X_test.T, self.y_test).reshape(-1, len(self.y_test)).T
+            self.X_split_train = np.append(self.X_split_train.T, self.y_split_train).reshape(-1, len(self.y_split_train)).T
+            self.X_split_val = np.append(self.X_split_val.T, self.y_split_val).reshape(-1, len(self.y_split_val)).T
+            # set deltaNextHours as y
+            self.y = self.X.T[0].reshape(-1)
+            self.y_train = self.X_train.T[0].reshape(-1)
+            self.y_test = self.X_test.T[0].reshape(-1)
+            self.y_split_train = self.X_split_train.T[0].reshape(-1)
+            self.y_split_val = self.X_split_val.T[0].reshape(-1)
+            # remove deltaNextHours from X
+            self.X = self.X.T[1:].T
+            self.X_train = self.X_train.T[1:].T
+            self.X_test = self.X_test.T[1:].T
+            self.X_split_train = self.X_split_train.T[1:].T
+            self.X_split_val = self.X_split_val.T[1:].T
 
         self.y_train = self.y_train.reshape(-1)
         self.y_test = self.y_test.reshape(-1)
