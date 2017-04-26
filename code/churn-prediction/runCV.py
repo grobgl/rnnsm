@@ -2,7 +2,7 @@ import pickle
 import os
 import sys
 sys.path.insert(0, '../utils')
-from plot_format import *
+# from plot_format import *
 
 from logistic_regression import *
 from random_forest import *
