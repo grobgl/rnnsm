@@ -12,7 +12,7 @@ import pickle
 import os
 import sys
 sys.path.insert(0, '../utils')
-from plot_format import *
+# from plot_format import *
 
 _RESULT_PATH = '../../results/churn/logistic_regression/'
 
@@ -38,7 +38,7 @@ def runFeatureElimination(includeFeat='all'):
     :includeFeat: 'avg' or 'wght' -- include wght avg or avg only
     """
     # load data
-    pool = Pool(8)
+    pool = Pool(64)
 
     # all features
     data = ChurnData()
@@ -109,10 +109,10 @@ def runL1GridSearch():
     cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
     # default scoring is accuracy
-    grid_acc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=8, cv=cv, scoring='accuracy')
+    grid_acc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=64, cv=cv, scoring='accuracy')
     grid_acc.fit(**data.train)
 
-    grid_auc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=8, cv=cv, scoring='roc_auc')
+    grid_auc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=64, cv=cv, scoring='roc_auc')
     grid_auc.fit(**data.train)
 
     res = {'accuracy': grid_acc, 'roc_auc': grid_auc}
@@ -141,10 +141,10 @@ def runL2GridSearch():
     cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
     # default scoring is accuracy
-    grid_acc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=8, cv=cv, scoring='accuracy')
+    grid_acc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=64, cv=cv, scoring='accuracy')
     grid_acc.fit(**data.train)
 
-    grid_auc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=8, cv=cv, scoring='roc_auc')
+    grid_auc = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=64, cv=cv, scoring='roc_auc')
     grid_auc.fit(**data.train)
 
     res = {'accuracy': grid_acc, 'roc_auc': grid_auc}

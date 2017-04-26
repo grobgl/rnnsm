@@ -10,7 +10,7 @@ import pickle
 import os
 import sys
 sys.path.insert(0, '../utils')
-from plot_format import *
+# from plot_format import *
 
 
 _RESULT_PATH = '../../results/churn/random_forest/'
@@ -31,7 +31,7 @@ def runGridSearch():
     cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
     # default scoring is accuracy
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=8, cv=cv)
+    grid = GridSearchCV(estimator=model, param_grid=param_grid, verbose=1, n_jobs=64, cv=cv)
     grid.fit(**data.train)
 
     with open(_RESULT_PATH+'grid_search_result.pkl', 'wb') as handle:
