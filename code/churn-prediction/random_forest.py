@@ -27,10 +27,8 @@ def printTestSetResultsRandFor():
 
 def runGridSearch():
     param_grid = {
-        # 'n_estimators': [50],
         'n_estimators': [100],
         'max_features': range(10,30),
-        # 'max_depth': range(1,10),
         'max_depth': range(1,20),
         'min_samples_leaf': range(5,25)
     }
