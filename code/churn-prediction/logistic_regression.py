@@ -12,7 +12,7 @@ import pickle
 import os
 import sys
 sys.path.insert(0, '../utils')
-from plot_format import *
+# from plot_format import *
 
 _RESULT_PATH = '../../results/churn/logistic_regression/'
 
