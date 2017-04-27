@@ -39,8 +39,8 @@ class ChurnData:
         self.y = np.array(self.y.tolist())
 
         # use stratified split
-        trainI, testI  = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.X, self.y))
-        self.X_train0, self.X_test0, self.y_train, self.y_test = self.X[trainI], self.X[testI], self.y[trainI], self.y[testI]
+        self.train_ind, self.test_ind  = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.X, self.y))
+        self.X_train0, self.X_test0, self.y_train, self.y_test = self.X[self.train_ind], self.X[self.test_ind], self.y[self.train_ind], self.y[self.test_ind]
 
         # scale values
         self.scaler = StandardScaler()
@@ -53,8 +53,8 @@ class ChurnData:
 
         # further split training set into train and validation sets
         # use stratified split
-        trainI, testI  = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.X_train, self.y_train))
-        self.X_split_train, self.X_split_val, self.y_split_train, self.y_split_val = self.X_train[trainI], self.X_train[testI], self.y_train[trainI], self.y_train[testI]
+        self.split_train_ind, self.split_val_ind = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.X_train, self.y_train))
+        self.X_split_train, self.X_split_val, self.y_split_train, self.y_split_val = self.X_train[self.split_train_ind], self.X_train[self.split_val_ind], self.y_train[self.split_train_ind], self.y_train[self.split_val_ind]
 
         # set features for churned / deltaNextHours prediction
         if self.pred_col=='churned':
@@ -91,12 +91,16 @@ class ChurnData:
 
         self.train = {'X': self.X_train, 'y': self.y_train}
         self.train_df = self._asDf(**self.train)
+        self.train_unscaled_df = self._asDf(X=self.X[self.train_ind], y=self.y[self.train_ind])
         self.test = {'X': self.X_test, 'y': self.y_test}
         self.test_df = self._asDf(**self.test)
+        self.test_unscaled_df = self._asDf(X=self.X[self.test_ind], y=self.y[self.test_ind])
         self.split_train = {'X': self.X_split_train, 'y': self.y_split_train}
         self.split_train_df = self._asDf(**self.split_train)
+        self.split_train_unscaled_df = self.train_unscaled_df.iloc[self.split_train_ind]
         self.split_val = {'X': self.X_split_val, 'y': self.y_split_val}
         self.split_val_df = self._asDf(**self.split_val)
+        self.split_val_unscaled_df = self.train_unscaled_df.iloc[self.split_val_ind]
 
 
     def _asDf(self,X,y):
