@@ -10,12 +10,6 @@ from sklearn.model_selection import StratifiedKFold
 
 from multiprocessing import Pool
 from functools import partial
-import sys
-sys.path.insert(0, '../utils')
-from plot_format import *
-# import seaborn as sns
-from seaborn import apionly as sns
-
 
 
 class CoxSqrtChurnModel(SurvivalModel):

@@ -12,9 +12,9 @@ import sys
 sys.path.insert(0, '../utils')
 sys.path.insert(0, '../churn-prediction')
 from churn_data import ChurnData, getChurnScores
-from plot_format import *
+# from plot_format import *
 # import seaborn as sns
-from seaborn import apionly as sns
+# from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -33,7 +33,7 @@ class SurvivalModel:
         if indices is not None:
             dataset = dataset.iloc[indices]
 
-        # dataset = dataset.copy()
+        dataset = dataset.copy()
         dataset.deltaNextHours = self.transformTargets(dataset.deltaNextHours)
         self.cf.fit(dataset, 'deltaNextHours', event_col='observed')
 
@@ -111,13 +111,15 @@ def runParameterSearch(model):
 
     # load data
     data = ChurnData(predict='deltaNextHours')
+    # load churn data for splitting fold stratas
+    churnData = ChurnData()
 
     pool = Pool(nPools)
 
     cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
     scores = [0] * nFolds
 
-    for i, (train_ind, test_ind) in enumerate(cv.split(**data.train)):
+    for i, (train_ind, test_ind) in enumerate(cv.split(**churnData.train)):
         print('Fold: {} out of {}'.format(i+1, nFolds))
         scores[i] = pool.map(
                 partial(_runParameterSearch, model=model, data=data, train_ind=train_ind, test_ind=test_ind),
