@@ -109,7 +109,7 @@ def _aggregateCust(sess):
     sess['price_wght_avg'].values[0] = np.average(sess.avgPrice, weights=invRecency)
 
     if not sess.deltaNext.tail(1).isnull().values[0]:
-        sess['deltaNextHours'].values[0] = max(0,sess.deltaNext.values[0] / np.timedelta64(1,'h'))
+        sess['deltaNextHours'].values[0] = max(0,sess.deltaNext.tail(1).values[0] / np.timedelta64(1,'h'))
     else:
         sess['deltaNextHours'].values[0] = (predPeriod['end'] - sess.startUserTime.values[-1]) / np.timedelta64(1,'h')
 

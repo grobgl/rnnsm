@@ -16,18 +16,16 @@ sys.path.insert(0, '../utils')
 
 _RESULT_PATH = '../../results/churn/logistic_regression/'
 
-def getOptL1Model():
-    res = pickle.load(open('{}logRegL1vsL2.pkl'.format(_RESULT_PATH), 'rb'))
-    accL1 = [r['accuracy'] for r in res['L1']]
-    modelL1 = LogisticRegression(penalty='l1', C=np.logspace(np.log10(2e-4),0,800)[accL1.index(max(accL1))])
-    return modelL1
+def printTestSetResultsLogReg():
+    gridL2 = pickle.load(open(_RESULT_PATH+'logRegL2_grid.pkl','rb'))
+    accL2 = gridL2['accuracy']
+    params = accL2.best_params_
+    model = LogisticRegression(**params)
+    data = ChurnData()
 
+    model.fit(**data.train)
 
-def getOptL2Model():
-    res = pickle.load(open('{}logRegL1vsL2.pkl'.format(_RESULT_PATH), 'rb'))
-    accL2 = [r['accuracy'] for r in res['L2']]
-    modelL2 = LogisticRegression(penalty='l2', C=np.logspace(np.log10(2e-4),0,800)[accL2.index(max(accL2))])
-    return modelL2
+    return data.printScores(model)
 
 
 def runFeatureElimination(includeFeat='all'):

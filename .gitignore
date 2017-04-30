@@ -4,3 +4,5 @@ plots
 code/sample
 __pycache__/
 *.py[cod]
+results/churn/*/model.pkl
+results/churn/*/coxChurnModel.pkl
