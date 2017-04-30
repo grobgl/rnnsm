@@ -1,5 +1,4 @@
 import pickle
-from churn_data import ChurnData, getChurnScores
 import pandas as pd
 import numpy as np
 from lifelines import CoxPHFitter
@@ -11,30 +10,40 @@ from multiprocessing import Pool
 from functools import partial
 import sys
 sys.path.insert(0, '../utils')
+sys.path.insert(0, '../churn-prediction')
+from churn_data import ChurnData, getChurnScores
 from plot_format import *
 # import seaborn as sns
 from seaborn import apionly as sns
 
-_RESULT_PATH = '../../results/churn/cox_regression/'
 
 predPeriod = {
     'start': pd.Timestamp('2016-02-01'),
     'end': pd.Timestamp('2016-06-01')
 }
 predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
-# predPeriodHours = 2655
 
-class CoxChurnModel:
-    def __init__(self, data, penalizer=5000):
-        self.cf = CoxPHFitter(penalizer=penalizer)
+data = ChurnData(predict='deltaNextHours')
+
+class SurvivalModel:
+    def __init__(self):
         self.data = data
-
 
     def fit(self, dataset, indices=None):
         if indices is not None:
             dataset = dataset.iloc[indices]
 
+        # dataset = dataset.copy()
+        dataset.deltaNextHours = self.transformTargets(dataset.deltaNextHours)
         self.cf.fit(dataset, 'deltaNextHours', event_col='observed')
+
+
+    def transformTargets(self, targets):
+        return targets
+
+
+    def reverseTransformTargets(self, targets):
+        return targets
 
 
     def predict_expectation(self, indices=None, dataset='train'):
@@ -48,7 +57,7 @@ class CoxChurnModel:
 
         x_df = df.iloc[indices]
 
-        pred = self.cf.predict_expectation(x_df)
+        pred = self.reverseTransformTargets(self.cf.predict_expectation(x_df))
 
         return pred.values.reshape(-1)
 
@@ -88,17 +97,17 @@ class CoxChurnModel:
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
 
-def runParameterSearch():
+def runParameterSearch(model):
     """
     Cross-validated search for parameters
 
     """
-    nFolds = 2
-    nParams = 2
+    nFolds = 10
+    nParams = 100
     nPools = 64
 
     # penalizer range
-    penalizers = np.logspace(0,4,nParams)
+    penalizers = np.linspace(1,20000,nParams)
 
     # load data
     data = ChurnData(predict='deltaNextHours')
@@ -111,7 +120,7 @@ def runParameterSearch():
     for i, (train_ind, test_ind) in enumerate(cv.split(**data.train)):
         print('Fold: {} out of {}'.format(i+1, nFolds))
         scores[i] = pool.map(
-                partial(_runParameterSearch, data=data, train_ind=train_ind, test_ind=test_ind),
+                partial(_runParameterSearch, model=model, data=data, train_ind=train_ind, test_ind=test_ind),
                 penalizers)
 
     pool.close()
@@ -123,41 +132,41 @@ def runParameterSearch():
     concordance = np.array([[s['concordance'] for s in ss] for ss in scores]).mean(0)
 
     res = {'penalizers': penalizers,
-            'churn': {'scores': churn_scores, 'accuracy': churn_accuracy, 'auc': churn_auc},
-            'rmse_days': rmse_days,
-            'concordance': concordance}
+           'churn': {'scores': churn_scores, 'accuracy': churn_accuracy, 'auc': churn_auc},
+           'rmse_days': rmse_days,
+           'concordance': concordance}
 
-    with open('{}penalizer_search.pkl'.format(_RESULT_PATH), 'wb') as handle:
+    with open('{}penalizer_search.pkl'.format(model.RESULT_PATH), 'wb') as handle:
         pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return res
 
 
-def _runParameterSearch(penalizer, data=None, train_ind=None, test_ind=None):
-    model = CoxChurnModel(data, penalizer=penalizer)
+def _runParameterSearch(penalizer, model=None, data=None, train_ind=None, test_ind=None):
+    model = model(penalizer=penalizer)
     model.fit(data.train_df, indices=train_ind)
 
     return model.getScores(test_ind)
 
 
-def storeModels():
+def storeModel(model, **model_params):
     data = ChurnData(predict='deltaNextHours')
-    model = CoxChurnModel(data)
-    model.fit(data.split_train_df)
+    m = model(data, **model_params)
+    m.fit(data.split_train_df)
 
-    with open(_RESULT_PATH+'model.pkl', 'wb') as handle:
-        pickle.dump(model, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(model.RESULT_PATH+'model.pkl', 'wb') as handle:
+        pickle.dump(m, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    pred_val = model.cf.predict_expectation(data.split_val_df).values.reshape(-1)
+    pred_val = m.cf.predict_expectation(data.split_val_df).values.reshape(-1)
 
-    with open(_RESULT_PATH+'pred_val.pkl', 'wb') as handle:
+    with open(model.RESULT_PATH+'pred_val.pkl', 'wb') as handle:
         pickle.dump(pred_val, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def showJointPlot(width=1, height=None):
+def showJointPlot(model, width=1, height=None):
     data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
     observed = data.split_val_df.observed.values.astype('bool').reshape(-1)
-    pred_val = pickle.load(open(_RESULT_PATH+'pred_val.pkl', 'rb'))
+    pred_val = pickle.load(open(model.RESULT_PATH+'pred_val.pkl', 'rb'))
 
     df = pd.DataFrame()
     df['predicted'] = pred_val[observed]
@@ -169,10 +178,10 @@ def showJointPlot(width=1, height=None):
 
 
 # up to acc 0.712
-def showChurnedPred(width=1, height=None):
+def showChurnedPred(model, width=1, height=None):
     data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
     observed = data.split_val_df.observed.values.astype('bool').reshape(-1)
-    pred_val = pickle.load(open(_RESULT_PATH+'pred_val.pkl', 'rb'))
+    pred_val = pickle.load(open(model.RESULT_PATH+'pred_val.pkl', 'rb'))
 
     returnDate = pred_val - data.split_val_unscaled_df.recency.values.reshape(-1)
 
@@ -190,11 +199,5 @@ def showChurnedPred(width=1, height=None):
 
     fig.tight_layout()
     fig.show()
-
-
-
-# data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
-# model = pickle.load(open(_RESULT_PATH+'model.pkl', 'rb'))
-# pred_val = pickle.load(open(_RESULT_PATH+'pred_val.pkl', 'rb'))
 
 
