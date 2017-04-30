@@ -114,8 +114,8 @@ def showChurnedPred(width=1, height=None):
 
 
 
-data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
-model = pickle.load(open(_RESULT_PATH+'model.pkl', 'rb'))
-pred_val = pickle.load(open(_RESULT_PATH+'pred_val.pkl', 'rb'))
+# data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
+# model = pickle.load(open(_RESULT_PATH+'model.pkl', 'rb'))
+# pred_val = pickle.load(open(_RESULT_PATH+'pred_val.pkl', 'rb'))
 
 
