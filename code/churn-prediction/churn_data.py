@@ -107,6 +107,7 @@ class ChurnData:
         df = pd.DataFrame(X)
         if self.pred_col=='deltaNextHours':
             df.columns = self.features.tolist() + ['observed']
+            df['observed'] = ~df.observed.values.astype('bool').reshape(-1)
         else:
             df.columns = self.features
 
@@ -131,24 +132,28 @@ class ChurnData:
         predicted = model.predict(X)
         probs = model.predict_proba(X)
 
-        accuracy = metrics.accuracy_score(y, predicted)
-        auc = metrics.roc_auc_score(y, probs[:, 1])
-        f1 = metrics.f1_score(y, predicted)
-        report = metrics.classification_report(y, predicted)
-        confusion_matrix =  metrics.confusion_matrix(y, predicted)
-
-        return {'accuracy': accuracy,
-                'auc': auc,
-                'f1': f1,
-                'classification_report': report,
-                'confusion_matrix': confusion_matrix}
+        return getChurnScores(y, predicted, probs)
 
 
     def printScores(self, model, dataset='test', X=None, y=None):
         scores = self.getScores(model, dataset, X, y)
         print('Accuracy: {}\n'.format(scores['accuracy']))
         print('AUC: {}\n'.format(scores['auc']))
+        print('f1: {}\n'.format(scores['f1']))
         print(scores['classification_report'])
         print('Confusion matrix:\n', scores['confusion_matrix'])
 
+
+def getChurnScores(y_true, y_pred, y_pred_proba):
+    accuracy = metrics.accuracy_score(y_true, y_pred)
+    auc = metrics.roc_auc_score(y_true, y_pred_proba)
+    f1 = metrics.f1_score(y_true, y_pred)
+    report = metrics.classification_report(y_true, y_pred)
+    confusion_matrix =  metrics.confusion_matrix(y_true, y_pred)
+
+    return {'accuracy': accuracy,
+            'auc': auc,
+            'f1': f1,
+            'classification_report': report,
+            'confusion_matrix': confusion_matrix}
 
