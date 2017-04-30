@@ -8,4 +8,6 @@ from survival_model import *
 
 
 def run():
-    return runParameterSearch(CoxChurnModel)
+    runParameterSearch(CoxChurnModel)
+
+    return
