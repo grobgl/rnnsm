@@ -13,9 +13,9 @@ import sys
 sys.path.insert(0, '../utils')
 sys.path.insert(0, '../churn-prediction')
 from churn_data import ChurnData, getChurnScores
-# from plot_format import *
-# import seaborn as sns
-# from seaborn import apionly as sns
+from plot_format import *
+import seaborn as sns
+from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -168,7 +168,7 @@ def showJointPlot(model, width=1, height=None):
     df['predicted'] = pred_val[observed] / 24
     df['actual'] = data.split_val['y'][observed] / 24
 
-    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='resid', size=figsize(.5,.5)[0])
+    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='kde', size=figsize(.5,.5)[0])
 
     plt.show()
 
