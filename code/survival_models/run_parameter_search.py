@@ -9,5 +9,10 @@ from survival_model import *
 
 def run():
     runParameterSearch(CoxChurnModel)
+    runParameterSearch(CoxLogChurnModel)
+    runParameterSearch(CoxSqrtChurnModel)
+    runParameterSearch(AalenChurnModel)
+    runParameterSearch(AalenLogChurnModel)
+    runParameterSearch(AalenSqrtChurnModel)
 
     return

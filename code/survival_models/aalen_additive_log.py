@@ -18,7 +18,7 @@ class AalenLogChurnModel(SurvivalModel):
 
     def __init__(self, penalizer=0):
         super().__init__()
-        self.cf = AalenAdditiveFitter(coef_penalizer=penalizer)
+        self.cf = AalenAdditiveFitter(coef_penalizer=penalizer, progress_bar=False)
 
     def transformTargets(self, targets):
         return np.log(targets + 1)

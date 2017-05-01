@@ -103,11 +103,13 @@ def runParameterSearch(model):
 
     """
     nFolds = 10
-    nParams = 100
+    nParams = 251
     nPools = 64
 
+    print(model.RESULT_PATH)
+
     # penalizer range
-    penalizers = np.linspace(1,20000,nParams)
+    penalizers = np.linspace(0,25000,nParams)
 
     # load data
     data = ChurnData(predict='deltaNextHours')
