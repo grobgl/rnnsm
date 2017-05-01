@@ -5,6 +5,7 @@ from lifelines import CoxPHFitter
 from lifelines.utils import concordance_index
 from sklearn.metrics import roc_auc_score, mean_squared_error
 from sklearn.model_selection import StratifiedKFold
+from GPyOpt.methods import BayesianOptimization
 
 from multiprocessing import Pool
 from functools import partial
@@ -12,9 +13,9 @@ import sys
 sys.path.insert(0, '../utils')
 sys.path.insert(0, '../churn-prediction')
 from churn_data import ChurnData, getChurnScores
-# from plot_format import *
-# import seaborn as sns
-# from seaborn import apionly as sns
+from plot_format import *
+import seaborn as sns
+from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -102,55 +103,46 @@ def runParameterSearch(model):
     Cross-validated search for parameters
 
     """
-    nFolds = 10
-    nParams = 251
-    nPools = 64
+    nFolds = 2
+    nPools = 8
+    bounds = [(0,20000)]
+    max_iter = 10
 
     print(model.RESULT_PATH)
 
-    # penalizer range
-    penalizers = np.linspace(0,25000,nParams)
-
-    # load data
-    data = ChurnData(predict='deltaNextHours')
     # load churn data for splitting fold stratas
     churnData = ChurnData()
 
     pool = Pool(nPools)
 
     cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
-    scores = [0] * nFolds
+    splits = np.array(list(cv.split(**churnData.train)))
 
-    for i, (train_ind, test_ind) in enumerate(cv.split(**churnData.train)):
-        print('Fold: {} out of {}'.format(i+1, nFolds))
-        scores[i] = pool.map(
-                partial(_runParameterSearch, model=model, data=data, train_ind=train_ind, test_ind=test_ind),
-                penalizers)
+    f = partial(_evaluatePenalizer, model=model, splits=splits, pool=pool)
+    bOpt = BayesianOptimization(f=f, bounds=bounds)
+
+    bOpt.run_optimization(max_iter=max_iter)
 
     pool.close()
 
-    churn_scores = [[s['churn'] for s in ss] for ss in scores]
-    churn_accuracy = np.array([[s['churn']['accuracy'] for s in ss] for ss in scores]).mean(0)
-    churn_auc = np.array([[s['churn']['auc'] for s in ss] for ss in scores]).mean(0)
-    rmse_days = np.array([[s['rmse_days'] for s in ss] for ss in scores]).mean(0)
-    concordance = np.array([[s['concordance'] for s in ss] for ss in scores]).mean(0)
+    return bOpt
 
-    res = {'penalizers': penalizers,
-           'churn': {'scores': churn_scores, 'accuracy': churn_accuracy, 'auc': churn_auc},
-           'rmse_days': rmse_days,
-           'concordance': concordance}
+def _evaluatePenalizer(penalizer, model=None, splits=None, pool=None):
+    scores = pool.map(
+            partial(_runParameterSearch, model=model, penalizer=penalizer),
+            splits)
+    # scores = list(map(
+    #         partial(_runParameterSearch, model=model, penalizer=penalizer),
+    #         splits))
 
-    with open('{}penalizer_search.pkl'.format(model.RESULT_PATH), 'wb') as handle:
-        pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    return np.mean(scores)
 
-    return res
+def _runParameterSearch(splits, model=None, penalizer=None):
+    train_ind, test_ind = splits
+    model = model(penalizer=penalizer[0][0])
+    model.fit(model.data.train_df, indices=train_ind)
 
-
-def _runParameterSearch(penalizer, model=None, data=None, train_ind=None, test_ind=None):
-    model = model(penalizer=penalizer)
-    model.fit(data.train_df, indices=train_ind)
-
-    return model.getScores(test_ind)
+    return model.getScores(test_ind)['concordance']
 
 
 def storeModel(model, **model_params):
@@ -168,24 +160,22 @@ def storeModel(model, **model_params):
 
 
 def showJointPlot(model, width=1, height=None):
-    data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
-    observed = data.split_val_df.observed.values.astype('bool').reshape(-1)
-    pred_val = pickle.load(open(model.RESULT_PATH+'pred_val.pkl', 'rb'))
+    observed = model.data.split_val_df.observed.values.astype('bool').reshape(-1)
+    pred_val = model.predict_expectation()
 
     df = pd.DataFrame()
-    df['predicted'] = pred_val[observed]
-    df['actual'] = data.split_val['y'][observed]
+    df['predicted'] = pred_val[observed] / 24
+    df['actual'] = data.split_val['y'][observed] / 24
 
-    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='kde', size=figsize(.5,.5)[0])
+    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='resid', size=figsize(.5,.5)[0])
 
     plt.show()
 
 
 # up to acc 0.712
 def showChurnedPred(model, width=1, height=None):
-    data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logDeltaPrev_avg', 'logNumSessions'])
-    observed = data.split_val_df.observed.values.astype('bool').reshape(-1)
-    pred_val = pickle.load(open(model.RESULT_PATH+'pred_val.pkl', 'rb'))
+    observed = model.data.split_val_df.observed.values.astype('bool').reshape(-1)
+    pred_val = model.predict_expectation()
 
     returnDate = pred_val - data.split_val_unscaled_df.recency.values.reshape(-1)
 
