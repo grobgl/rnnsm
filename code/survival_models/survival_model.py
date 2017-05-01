@@ -13,9 +13,9 @@ import sys
 sys.path.insert(0, '../utils')
 sys.path.insert(0, '../churn-prediction')
 from churn_data import ChurnData, getChurnScores
-from plot_format import *
-import seaborn as sns
-from seaborn import apionly as sns
+# from plot_format import *
+# import seaborn as sns
+# from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -36,7 +36,7 @@ class SurvivalModel:
 
         dataset = dataset.copy()
         dataset.deltaNextHours = self.transformTargets(dataset.deltaNextHours)
-        self.cf.fit(dataset, 'deltaNextHours', event_col='observed')
+        self.cf.fit(dataset, 'deltaNextHours', event_col='observed', show_progress=False)
 
 
     def transformTargets(self, targets):
@@ -103,47 +103,44 @@ def runParameterSearch(model):
     Cross-validated search for parameters
 
     """
-    nFolds = 2
-    nPools = 8
-    bounds = {'penalizer': (0,20000)}
-    n_iter = 10
+    nFolds = 10
+    nPools = 10
+    bounds = {'penalizer': (0,25000)}
+    n_iter = 100
 
     print(model.RESULT_PATH)
 
     # load churn data for splitting fold stratas
     churnData = ChurnData()
 
-    pool = Pool(nPools)
-
     cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
     splits = np.array(list(cv.split(**churnData.train)))
 
-    f = partial(_evaluatePenalizer, model=model, splits=splits, pool=pool)
+    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools= nPools)
     bOpt = BayesianOptimization(f, bounds)
 
-    bOpt.run_optimization(max_iter=max_iter)
     bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5)
-
-    pool.close()
 
     with open(model.RESULT_PATH+'bayes_opt.pkl', 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
 
-def _evaluatePenalizer(penalizer, model=None, splits=None, pool=None):
+def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None):
+    pool = Pool(nPools)
+
     scores = pool.map(
             partial(_runParameterSearch, model=model, penalizer=penalizer),
             splits)
-    # scores = list(map(
-    #         partial(_runParameterSearch, model=model, penalizer=penalizer),
-    #         splits))
+
+    pool.close()
+    pool.join()
 
     return np.mean(scores)
 
 def _runParameterSearch(splits, model=None, penalizer=None):
     train_ind, test_ind = splits
-    model = model(penalizer=penalizer[0][0])
+    model = model(penalizer=penalizer)
     model.fit(model.data.train_df, indices=train_ind)
 
     return model.getScores(test_ind)['concordance']
