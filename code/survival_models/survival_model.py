@@ -5,6 +5,7 @@ from lifelines import CoxPHFitter
 from lifelines.utils import concordance_index
 from sklearn.metrics import roc_auc_score, mean_squared_error
 from sklearn.model_selection import StratifiedKFold
+from sklearn.gaussian_process.kernels import Matern
 from bayes_opt import BayesianOptimization
 
 from multiprocessing import Pool
@@ -105,7 +106,7 @@ def runParameterSearch(model):
     """
     nFolds = 10
     nPools = 10
-    bounds = {'penalizer': (0,25000)}
+    bounds = {'penalizer': (0,5000)}
     n_iter = 100
 
     print(model.RESULT_PATH)
@@ -119,7 +120,7 @@ def runParameterSearch(model):
     f = partial(_evaluatePenalizer, model=model, splits=splits, nPools= nPools)
     bOpt = BayesianOptimization(f, bounds)
 
-    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5)
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
 
     with open(model.RESULT_PATH+'bayes_opt.pkl', 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
