@@ -125,6 +125,9 @@ def runParameterSearch(model):
 
     pool.close()
 
+    with open(model.RESULT_PATH+'bayes_opt.pkl', 'wb') as handle:
+        pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
     return bOpt
 
 def _evaluatePenalizer(penalizer, model=None, splits=None, pool=None):
