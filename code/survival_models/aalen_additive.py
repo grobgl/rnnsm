@@ -17,6 +17,6 @@ class AalenChurnModel(SurvivalModel):
     RESULT_PATH = '../../results/churn/aalen_additive/'
 
     def __init__(self, penalizer=0, include_recency=False):
-        super().__init__()
-        self.cf = AalenAdditiveFitter(coef_penalizer=penalizer, include_recency=include_recency)
+        super().__init__(include_recency=include_recency)
+        self.cf = AalenAdditiveFitter(coef_penalizer=penalizer)
 

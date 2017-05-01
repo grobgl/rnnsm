@@ -17,8 +17,8 @@ class CoxLogChurnModel(SurvivalModel):
     RESULT_PATH = '../../results/churn/cox_regression_log/'
 
     def __init__(self, penalizer=0, include_recency=False):
-        super().__init__()
-        self.cf = CoxPHFitter(penalizer=penalizer, include_recency=include_recency)
+        super().__init__(include_recency=include_recency)
+        self.cf = CoxPHFitter(penalizer=penalizer)
 
     def transformTargets(self, targets):
         return np.log(targets + 1)

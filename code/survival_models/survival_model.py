@@ -1,8 +1,9 @@
 import pickle
 import pandas as pd
 import numpy as np
+from scipy.integrate import trapz
 from lifelines import CoxPHFitter
-from lifelines.utils import concordance_index
+from lifelines.utils import concordance_index, _get_index
 from sklearn.metrics import roc_auc_score, mean_squared_error
 from sklearn.model_selection import StratifiedKFold
 from sklearn.gaussian_process.kernels import Matern
@@ -132,7 +133,7 @@ class SurvivalModel:
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
 
-def runParameterSearch(model):
+def runParameterSearch(model, include_recency=False):
     """
     Cross-validated search for parameters
 
@@ -150,21 +151,21 @@ def runParameterSearch(model):
     cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
     splits = np.array(list(cv.split(**churnData.train)))
 
-    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools= nPools)
+    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency)
     bOpt = BayesianOptimization(f, bounds)
 
     bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
 
-    with open(model.RESULT_PATH+'bayes_opt.pkl', 'wb') as handle:
+    with open(model.RESULT_PATH+'bayes_opt{}.pkl'.format('_rec' if include_recency else ''), 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
 
-def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None):
+def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_recency=False):
     pool = Pool(nPools)
 
     scores = pool.map(
-            partial(_runParameterSearch, model=model, penalizer=penalizer),
+            partial(_runParameterSearch, model=model, penalizer=penalizer, include_recency=include_recency),
             splits)
 
     pool.close()
@@ -172,9 +173,9 @@ def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None):
 
     return np.mean(scores)
 
-def _runParameterSearch(splits, model=None, penalizer=None):
+def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False):
     train_ind, test_ind = splits
-    model = model(penalizer=penalizer)
+    model = model(penalizer=penalizer, include_recency=include_recency)
     model.fit(model.data.train_df, indices=train_ind)
 
     return model.getScores(test_ind)['concordance']
