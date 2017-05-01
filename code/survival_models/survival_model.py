@@ -5,7 +5,7 @@ from lifelines import CoxPHFitter
 from lifelines.utils import concordance_index
 from sklearn.metrics import roc_auc_score, mean_squared_error
 from sklearn.model_selection import StratifiedKFold
-from GPyOpt.methods import BayesianOptimization
+from bayes_opt import BayesianOptimization
 
 from multiprocessing import Pool
 from functools import partial
@@ -105,8 +105,8 @@ def runParameterSearch(model):
     """
     nFolds = 2
     nPools = 8
-    bounds = [(0,20000)]
-    max_iter = 10
+    bounds = {'penalizer': (0,20000)}
+    n_iter = 10
 
     print(model.RESULT_PATH)
 
@@ -119,9 +119,10 @@ def runParameterSearch(model):
     splits = np.array(list(cv.split(**churnData.train)))
 
     f = partial(_evaluatePenalizer, model=model, splits=splits, pool=pool)
-    bOpt = BayesianOptimization(f=f, bounds=bounds)
+    bOpt = BayesianOptimization(f, bounds)
 
     bOpt.run_optimization(max_iter=max_iter)
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5)
 
     pool.close()
 
