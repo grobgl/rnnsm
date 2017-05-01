@@ -16,9 +16,9 @@ from functools import partial
 class AalenSqrtChurnModel(SurvivalModel):
     RESULT_PATH = '../../results/churn/aalen_additive_sqrt/'
 
-    def __init__(self, penalizer=0):
+    def __init__(self, penalizer=0, include_recency=False):
         super().__init__()
-        self.cf = AalenAdditiveFitter(coef_penalizer=penalizer)
+        self.cf = AalenAdditiveFitter(coef_penalizer=penalizer, include_recency)
 
     def transformTargets(self, targets):
         return np.sqrt(targets)

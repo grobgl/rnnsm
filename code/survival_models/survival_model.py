@@ -28,8 +28,9 @@ predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 
 data = ChurnData(predict='deltaNextHours')
 
 class SurvivalModel:
-    def __init__(self):
+    def __init__(self, include_recency=False):
         self.data = data
+        self.include_recency = include_recency
 
     def fit(self, dataset, indices=None):
         if indices is not None:
@@ -49,6 +50,9 @@ class SurvivalModel:
 
 
     def predict_expectation(self, indices=None, dataset='train'):
+        if self.include_recency:
+            return self._predict_expectation_recency(indices, dataset)
+
         df = self.data.train_df
 
         if dataset=='test':
@@ -60,6 +64,35 @@ class SurvivalModel:
         x_df = df.iloc[indices]
 
         pred = self.reverseTransformTargets(self.cf.predict_expectation(x_df))
+
+        return pred.values.reshape(-1)
+
+
+    def _predict_expectation_recency(self, indices=None, dataset='train'):
+        df = self.data.train_df
+        df_unscaled = self.data.train_unscaled_df
+
+        if dataset=='test':
+            df = self.data.test_df
+            df_unscaled = self.data.test_unscaled_df
+
+        if indices is None:
+            indices = self.data.split_val_ind
+
+        x_df = df.iloc[indices]
+        x_df_unscaled = df_unscaled.iloc[indices]
+        recency = self.transformTargets(x_df_unscaled.recency)
+
+        index = _get_index(x_df)
+        v = self.cf.predict_survival_function(x_df)[index]
+
+        # set all values in predicted survival function at position lower than recency to 0
+        for i,j in enumerate(v.columns):
+            v[j][v.index < recency[j]] = 0
+
+        targets = pd.DataFrame(recency + trapz(v.values.T, v.index), index=index)
+
+        pred = self.reverseTransformTargets(targets)
 
         return pred.values.reshape(-1)
 
@@ -169,7 +202,7 @@ def showJointPlot(model, width=1, height=None):
     df['predicted'] = pred_val[observed] / 24
     df['actual'] = data.split_val['y'][observed] / 24
 
-    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='resid', size=figsize(.5,.5)[0])
+    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='kde', size=figsize(.5,.5)[0])
 
     plt.show()
 
