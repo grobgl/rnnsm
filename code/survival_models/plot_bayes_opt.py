@@ -11,7 +11,7 @@ from seaborn import apionly as sns
 
 
 def posterior(bo, x):
-    xmin, xmax = 0, 25000
+    xmin, xmax = 0, 5000
     bo.gp.fit(bo.X, bo.Y)
     mu, sigma = bo.gp.predict(x, return_std=True)
     return mu, sigma
@@ -19,7 +19,7 @@ def posterior(bo, x):
 def plot_gp(model, width=1, height=None):
     bo = pickle.load(open(model.RESULT_PATH+'bayes_opt.pkl', 'rb'))
 
-    x = np.linspace(0, 25000, 10000).reshape(-1, 1)
+    x = np.linspace(0, 5000, 10000).reshape(-1, 1)
 
     fig, ax = newfig(width, height)
 
@@ -31,7 +31,7 @@ def plot_gp(model, width=1, height=None):
               np.concatenate([mu - 1.9600 * sigma, (mu + 1.9600 * sigma)[::-1]]),
         alpha=.2, fc='black', ec='None', label=r'95\% confidence interval')
 
-    ax.set_xlim((0, 25000))
+    ax.set_xlim((0, 5000))
     ax.set_ylim((None, None))
     ax.set_ylabel(r'Concordance')
     ax.set_xlabel(r'Penalizer')
