@@ -13,7 +13,6 @@ from multiprocessing import Pool
 from functools import partial
 import sys
 sys.path.insert(0, '../utils')
-sys.path.insert(0, '../churn-prediction')
 from churn_data import ChurnData, getChurnScores
 # from plot_format import *
 # import seaborn as sns
@@ -26,11 +25,10 @@ predPeriod = {
 }
 predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
 
-data = ChurnData(predict='deltaNextHours')
 
 class SurvivalModel:
     def __init__(self, include_recency=False):
-        self.data = data
+        self.data = ChurnData(predict='deltaNextHours')
         self.include_recency = include_recency
 
     def fit(self, dataset, indices=None):

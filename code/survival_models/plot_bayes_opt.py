@@ -17,7 +17,7 @@ def posterior(bo, x):
     return mu, sigma
 
 def plot_gp(model, width=1, height=None):
-    bo = pickle.load(open(model.RESULT_PATH+'bayes_opt.pkl', 'rb'))
+    bo = pickle.load(open(model.RESULT_PATH+'bayes_opt_rec.pkl', 'rb'))
 
     x = np.linspace(0, 5000, 10000).reshape(-1, 1)
 
