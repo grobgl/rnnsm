@@ -144,17 +144,13 @@ class SurvivalModel:
         s_df = pd.DataFrame(index=index, columns=['S_ts','int_full', 'int_from_ts', 'int_to_ts', 'E_T'])
         s_df['int_full'] = trapz(survival.values.T, survival.index)
         for i in survival.columns:
-            s_df['S_ts'][i] = survival[i][survival.index < recency[i]].values[-1] # set survival at time ts
-            survival[i][survival.index <= recency[i]] = 0
+            s_df.loc[i,'S_ts'] = survival[i][survival.index < recency[i]].values[-1] # set survival at time ts
+            survival.loc[survival.index <= recency[i],i] = 0
 
         s_df['int_from_ts'] = trapz(survival.values.T, survival.index)
         s_df['int_to_ts'] = s_df['int_full'] - s_df['int_from_ts']
-        # s_df['int_S_inf'] = survival[i][survival.index < recency[i]].sum() # cum. survival up to time t
-        # s_df['int_S_ts'] = survival[i][survival.index >= recency[i]].sum() # cum. survival from  time t
 
         s_df['E_T'] = s_df['int_from_ts'] / s_df['S_ts'] + s_df['int_to_ts']
-
-        # targets = pd.DataFrame(trapz(v.values.T, v.index), index=index)
 
         pred = self.reverseTransformTargets(s_df['E_T'])
 
