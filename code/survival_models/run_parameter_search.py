@@ -8,10 +8,17 @@ from survival_model import *
 
 
 def run():
-    # runParameterSearch(CoxChurnModel, include_recency=True)
+    # runParameterSearch(CoxChurnModel, include_recency=True, error='rmse_days', maximise=False)
+    # runParameterSearch(CoxChurnModel, include_recency=False, error='rmse_days', maximise=False)
+    # runParameterSearch(CoxSqrtChurnModel, include_recency=True, error='rmse_days', maximise=False)
+    # runParameterSearch(CoxSqrtChurnModel, include_recency=False, error='rmse_days', maximise=False)
+    # runParameterSearch(CoxLogChurnModel, include_recency=False, error='rmse_days', maximise=False)
+    # runParameterSearch(CoxLogChurnModel, include_recency=True, error='rmse_days', maximise=False)
+    # runParameterSearch(CoxChurnModel, include_recency=False, error='churn_auc', maximise=True)
+    runParameterSearch(CoxChurnModel, include_recency=True, error='churn_auc', maximise=True)
     # runParameterSearch(CoxLogChurnModel, include_recency=True)
     # runParameterSearch(CoxSqrtChurnModel, include_recency=True)
-    runParameterSearch(AalenChurnModel, include_recency=True)
+    # runParameterSearch(AalenChurnModel, include_recency=True)
     # runParameterSearch(AalenLogChurnModel)
     # runParameterSearch(AalenSqrtChurnModel)
 

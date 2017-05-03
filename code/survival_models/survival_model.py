@@ -11,11 +11,11 @@ from bayes_opt import BayesianOptimization
 
 from multiprocessing import Pool
 from functools import partial
+from churn_data import ChurnData, getChurnScores
 import sys
 sys.path.insert(0, '../utils')
-from churn_data import ChurnData, getChurnScores
-from plot_format import *
-from seaborn import apionly as sns
+# from plot_format import *
+# from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -188,7 +188,7 @@ class SurvivalModel:
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
 
-def runParameterSearch(model, include_recency=False, error='concordance'):
+def runParameterSearch(model, include_recency=False, error='concordance', maximise=True):
     """
     Cross-validated search for parameters
 
@@ -206,7 +206,7 @@ def runParameterSearch(model, include_recency=False, error='concordance'):
     cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
     splits = np.array(list(cv.split(**churnData.train)))
 
-    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=error)
+    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=error, maximise=maximise)
     bOpt = BayesianOptimization(f, bounds)
 
     bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
@@ -216,7 +216,7 @@ def runParameterSearch(model, include_recency=False, error='concordance'):
 
     return bOpt
 
-def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_recency=False, error='concordance'):
+def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_recency=False, error='concordance', maximise=False):
     pool = Pool(nPools)
 
     scores = pool.map(
@@ -225,7 +225,8 @@ def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_
                 model=model,
                 penalizer=penalizer,
                 include_recency=include_recency,
-                error=error),
+                error=error,
+                maximise=maximise),
             splits)
 
     pool.close()
@@ -233,12 +234,17 @@ def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_
 
     return np.mean(scores)
 
-def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False, error='concordance'):
+def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False, error='concordance', maximise=False):
     train_ind, test_ind = splits
     model = model(penalizer=penalizer, include_recency=include_recency)
     model.fit(model.data.train_df, indices=train_ind)
 
-    return model.getScores(test_ind)[error]
+    score = model.getScores(test_ind)[error]
+
+    if not maximise:
+        score = -score
+
+    return score
 
 
 def storeModel(model, **model_params):
