@@ -152,9 +152,9 @@ class SurvivalModel:
 
         s_df['E_T'] = s_df['int_from_ts'] / s_df['S_ts'] + s_df['int_to_ts']
 
-        pred = self.reverseTransformTargets(s_df['E_T'])
+        pred = self.reverseTransformTargets(s_df['E_T'].values.reshape(-1))
 
-        return pred.values.reshape(-1)
+        return pred
 
     def _predict_survival_function(self, indices=None, dataset='train'):
         df = self.data.train_df
