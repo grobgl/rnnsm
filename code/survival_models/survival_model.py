@@ -136,11 +136,9 @@ class SurvivalModel:
         x_df_unscaled = df_unscaled.iloc[indices]
         recency = self.transformTargets(x_df_unscaled.recency)
 
-        print('hello1')
         index = _get_index(x_df)
         survival = self.cf.predict_survival_function(x_df)[index]
 
-        print('hello2')
         # set all values in predicted survival function at position lower than recency to 0
         # S_ts = np.zeros(len(index)) # survival at time ts
         s_df = pd.DataFrame(index=index, columns=['S_ts','int_full', 'int_from_ts', 'int_to_ts', 'E_T'])
@@ -149,7 +147,6 @@ class SurvivalModel:
             s_df['S_ts'][i] = survival[i][survival.index < recency[i]].values[-1] # set survival at time ts
             survival[i][survival.index <= recency[i]] = 0
 
-        print('hello3')
         s_df['int_from_ts'] = trapz(survival.values.T, survival.index)
         s_df['int_to_ts'] = s_df['int_full'] - s_df['int_from_ts']
         # s_df['int_S_inf'] = survival[i][survival.index < recency[i]].sum() # cum. survival up to time t
@@ -161,7 +158,6 @@ class SurvivalModel:
 
         pred = self.reverseTransformTargets(s_df['E_T'])
 
-        print('hello4')
         return pred.values.reshape(-1)
 
     def _predict_survival_function(self, indices=None, dataset='train'):
