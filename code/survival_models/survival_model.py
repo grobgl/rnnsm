@@ -49,7 +49,7 @@ class SurvivalModel:
 
     def predict_expectation(self, indices=None, dataset='train'):
         if self.include_recency:
-            return self._predict_expectation_recency_B(indices, dataset)
+            return self._predict_expectation_recency_C(indices, dataset)
 
         df = self.data.train_df
 
@@ -119,6 +119,49 @@ class SurvivalModel:
 
         pred = self.reverseTransformTargets(targets)
 
+        return pred.values.reshape(-1)
+
+    def _predict_expectation_recency_C(self, indices=None, dataset='train'):
+        df = self.data.train_df
+        df_unscaled = self.data.train_unscaled_df
+
+        if dataset=='test':
+            df = self.data.test_df
+            df_unscaled = self.data.test_unscaled_df
+
+        if indices is None:
+            indices = self.data.split_val_ind
+
+        x_df = df.iloc[indices]
+        x_df_unscaled = df_unscaled.iloc[indices]
+        recency = self.transformTargets(x_df_unscaled.recency)
+
+        print('hello1')
+        index = _get_index(x_df)
+        survival = self.cf.predict_survival_function(x_df)[index]
+
+        print('hello2')
+        # set all values in predicted survival function at position lower than recency to 0
+        # S_ts = np.zeros(len(index)) # survival at time ts
+        s_df = pd.DataFrame(index=index, columns=['S_ts','int_full', 'int_from_ts', 'int_to_ts', 'E_T'])
+        s_df['int_full'] = trapz(survival.values.T, survival.index)
+        for i in survival.columns:
+            s_df['S_ts'][i] = survival[i][survival.index < recency[i]].values[-1] # set survival at time ts
+            survival[i][survival.index <= recency[i]] = 0
+
+        print('hello3')
+        s_df['int_from_ts'] = trapz(survival.values.T, survival.index)
+        s_df['int_to_ts'] = s_df['int_full'] - s_df['int_from_ts']
+        # s_df['int_S_inf'] = survival[i][survival.index < recency[i]].sum() # cum. survival up to time t
+        # s_df['int_S_ts'] = survival[i][survival.index >= recency[i]].sum() # cum. survival from  time t
+
+        s_df['E_T'] = s_df['int_from_ts'] / s_df['S_ts'] + s_df['int_to_ts']
+
+        # targets = pd.DataFrame(trapz(v.values.T, v.index), index=index)
+
+        pred = self.reverseTransformTargets(s_df['E_T'])
+
+        print('hello4')
         return pred.values.reshape(-1)
 
     def _predict_survival_function(self, indices=None, dataset='train'):
