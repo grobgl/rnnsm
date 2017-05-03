@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from scipy.integrate import trapz
 from lifelines import CoxPHFitter
-from lifelines.utils import concordance_index, _get_index
+from lifelines.utils import concordance_index, _get_index, qth_survival_times
 from sklearn.metrics import roc_auc_score, mean_squared_error
 from sklearn.model_selection import StratifiedKFold
 from sklearn.gaussian_process.kernels import Matern
@@ -14,9 +14,8 @@ from functools import partial
 import sys
 sys.path.insert(0, '../utils')
 from churn_data import ChurnData, getChurnScores
-# from plot_format import *
-# import seaborn as sns
-# from seaborn import apionly as sns
+from plot_format import *
+from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -50,7 +49,7 @@ class SurvivalModel:
 
     def predict_expectation(self, indices=None, dataset='train'):
         if self.include_recency:
-            return self._predict_expectation_recency(indices, dataset)
+            return self._predict_expectation_recency_B(indices, dataset)
 
         df = self.data.train_df
 
@@ -61,13 +60,18 @@ class SurvivalModel:
             indices = self.data.split_val_ind
 
         x_df = df.iloc[indices]
+        index = _get_index(x_df)
 
+        # pred = self.reverseTransformTargets(self.cf.predict_median(x_df))
+        # pred[np.isinf(pred)] = 2*predPeriodHours
+        # pred = qth_survival_times(.5, self._predict_survival_function(indices, dataset)[index])
+        # pred = self.reverseTransformTargets(pred)
         pred = self.reverseTransformTargets(self.cf.predict_expectation(x_df))
 
         return pred.values.reshape(-1)
 
 
-    def _predict_expectation_recency(self, indices=None, dataset='train'):
+    def _predict_expectation_recency_A(self, indices=None, dataset='train'):
         df = self.data.train_df
         df_unscaled = self.data.train_unscaled_df
 
@@ -95,6 +99,56 @@ class SurvivalModel:
 
         return pred.values.reshape(-1)
 
+    def _predict_expectation_recency_B(self, indices=None, dataset='train'):
+        df = self.data.train_df
+        # df_unscaled = self.data.train_unscaled_df
+
+        if dataset=='test':
+            df = self.data.test_df
+
+        if indices is None:
+            indices = self.data.split_val_ind
+
+        x_df = df.iloc[indices]
+
+        index = _get_index(x_df)
+
+        v = self._predict_survival_function(indices, dataset)
+
+        targets = pd.DataFrame(trapz(v.values.T, v.index), index=index)
+
+        pred = self.reverseTransformTargets(targets)
+
+        return pred.values.reshape(-1)
+
+    def _predict_survival_function(self, indices=None, dataset='train'):
+        df = self.data.train_df
+        df_unscaled = self.data.train_unscaled_df
+
+        if dataset=='test':
+            df = self.data.test_df
+            df_unscaled = self.data.test_unscaled_df
+
+        if indices is None:
+            indices = self.data.split_val_ind
+
+        x_df = df.iloc[indices]
+        x_df_unscaled = df_unscaled.iloc[indices]
+        recency = self.transformTargets(x_df_unscaled.recency)
+
+        index = _get_index(x_df)
+        cum_hazard = self.cf.predict_cumulative_hazard(x_df)
+
+        # set all values in hazard function at position lower than recency to 0
+        for i in cum_hazard.columns:
+            # s = cum_hazard[i][cum_hazard.index < recency[i]].sum()
+            cum_hazard[i] -= cum_hazard[i][cum_hazard.index <= recency[i]].values[-1]
+            cum_hazard[i][cum_hazard.index <= recency[i]] = 0
+
+        # survival function
+        v = np.exp(-cum_hazard)
+
+        return v
 
     def predict_churn(self, pred_durations, indices=None, dataset='train'):
         df_unscaled = self.data.train_unscaled_df
@@ -126,12 +180,15 @@ class SurvivalModel:
         pred_durations = self.predict_expectation(indices, dataset)
         pred_churn = self.predict_churn(pred_durations, indices, dataset)
 
-        return {'churn': getChurnScores(~df.observed, pred_churn, pred_durations),
+        churn_err = getChurnScores(~df.observed, pred_churn, pred_durations)
+
+        return {'churn_acc': churn_err['accuracy'],
+                'churn_auc': churn_err['auc'],
                 'rmse_days': np.sqrt(mean_squared_error(df.deltaNextHours, pred_durations)) / 24,
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
 
-def runParameterSearch(model, include_recency=False):
+def runParameterSearch(model, include_recency=False, error='concordance'):
     """
     Cross-validated search for parameters
 
@@ -149,21 +206,26 @@ def runParameterSearch(model, include_recency=False):
     cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
     splits = np.array(list(cv.split(**churnData.train)))
 
-    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency)
+    f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=error)
     bOpt = BayesianOptimization(f, bounds)
 
     bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
 
-    with open(model.RESULT_PATH+'bayes_opt{}.pkl'.format('_rec' if include_recency else ''), 'wb') as handle:
+    with open(model.RESULT_PATH+'bayes_opt_{}{}.pkl'.format(error, '_rec' if include_recency else ''), 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
 
-def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_recency=False):
+def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_recency=False, error='concordance'):
     pool = Pool(nPools)
 
     scores = pool.map(
-            partial(_runParameterSearch, model=model, penalizer=penalizer, include_recency=include_recency),
+            partial(
+                _runParameterSearch,
+                model=model,
+                penalizer=penalizer,
+                include_recency=include_recency,
+                error=error),
             splits)
 
     pool.close()
@@ -171,12 +233,12 @@ def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_
 
     return np.mean(scores)
 
-def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False):
+def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False, error='concordance'):
     train_ind, test_ind = splits
     model = model(penalizer=penalizer, include_recency=include_recency)
     model.fit(model.data.train_df, indices=train_ind)
 
-    return model.getScores(test_ind)['concordance']
+    return model.getScores(test_ind)[error]
 
 
 def storeModel(model, **model_params):
@@ -199,7 +261,7 @@ def showJointPlot(model, width=1, height=None):
 
     df = pd.DataFrame()
     df['predicted'] = pred_val[observed] / 24
-    df['actual'] = data.split_val['y'][observed] / 24
+    df['actual'] = model.data.split_val['y'][observed] / 24
 
     jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='kde', size=figsize(.5,.5)[0])
 
@@ -211,7 +273,7 @@ def showChurnedPred(model, width=1, height=None):
     observed = model.data.split_val_df.observed.values.astype('bool').reshape(-1)
     pred_val = model.predict_expectation()
 
-    returnDate = pred_val - data.split_val_unscaled_df.recency.values.reshape(-1)
+    returnDate = pred_val - model.data.split_val_unscaled_df.recency.values.reshape(-1)
 
     fig, ax = newfig(width, height)
 
