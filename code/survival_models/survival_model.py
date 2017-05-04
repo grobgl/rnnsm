@@ -4,7 +4,7 @@ import numpy as np
 from scipy.integrate import trapz
 from lifelines import CoxPHFitter
 from lifelines.utils import concordance_index, _get_index, qth_survival_times
-from sklearn.metrics import roc_auc_score, mean_squared_error
+from sklearn.metrics import roc_auc_score, mean_squared_error, roc_curve
 from sklearn.model_selection import StratifiedKFold
 from sklearn.gaussian_process.kernels import Matern
 from bayes_opt import BayesianOptimization
@@ -14,8 +14,8 @@ from functools import partial
 from churn_data import ChurnData, getChurnScores
 import sys
 sys.path.insert(0, '../utils')
-# from plot_format import *
-# from seaborn import apionly as sns
+from plot_format import *
+from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -23,6 +23,7 @@ predPeriod = {
     'end': pd.Timestamp('2016-06-01')
 }
 predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
+# predPeriodHours = 2700
 
 
 class SurvivalModel:
@@ -36,6 +37,7 @@ class SurvivalModel:
 
         dataset = dataset.copy()
         dataset.deltaNextHours = self.transformTargets(dataset.deltaNextHours)
+        del dataset['recency']
         self.cf.fit(dataset, 'deltaNextHours', event_col='observed', show_progress=False)
 
 
@@ -137,6 +139,7 @@ class SurvivalModel:
         recency = self.transformTargets(x_df_unscaled.recency)
 
         index = _get_index(x_df)
+        del x_df['recency']
         survival = self.cf.predict_survival_function(x_df)[index]
 
         # set all values in predicted survival function at position lower than recency to 0
@@ -323,8 +326,8 @@ def showChurnedPred(model, width=1, height=None):
     xDates = [pd.datetime(2016,i,1) for i in range(1,12)]
     xDatesHours = [(d - predPeriod['start']).to_timedelta64()/np.timedelta64(1,'h') for d in xDates]
     xDatesStr = [d.strftime('%Y-%m') for d in xDates]
-    ax.set_xticks(xDatesHours)
-    ax.set_xticklabels(xDatesStr)
+    # ax.set_xticks(xDatesHours)
+    # ax.set_xticklabels(xDatesStr)
     ax.axvline(x=predPeriodHours, label='prediction threshold' )
     ax.legend()
 

@@ -27,8 +27,8 @@ pgf_with_latex = {                      # setup matplotlib to use latex for outp
     "ytick.labelsize": 8,
     "figure.figsize": figsize(0.9),     # default fig size of 0.9 textwidth
     "pgf.preamble": [
-        r"\usepackage[utf8x]{inputenc}",    # use utf8 fonts becasue your computer can handle it :)
-        r"\usepackage[T1]{fontenc}",        # plots will be generated using this preamble
+        r"\usepackage[utf8x]{inputenc}",
+        r"\usepackage[T1]{fontenc}",
         ]
     }
 mpl.rcParams.update(pgf_with_latex)

@@ -8,6 +8,8 @@ from survival_model import *
 
 
 def run():
+    runParameterSearch(CoxChurnModel, include_recency=True, error='concordance', maximise=True)
+
     # runParameterSearch(CoxChurnModel, include_recency=True, error='rmse_days', maximise=False)
     # runParameterSearch(CoxChurnModel, include_recency=False, error='rmse_days', maximise=False)
     # runParameterSearch(CoxSqrtChurnModel, include_recency=True, error='rmse_days', maximise=False)
