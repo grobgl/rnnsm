@@ -23,6 +23,7 @@ predPeriod = {
     'end': pd.Timestamp('2016-06-01')
 }
 predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
+hours_year = np.timedelta64(pd.datetime(2017,2,1) - pd.datetime(2016,2,1)) / np.timedelta64(1,'h')
 # predPeriodHours = 2700
 
 
@@ -219,6 +220,10 @@ class SurvivalModel:
         pred_durations = self.predict_expectation(indices, dataset)
         pred_churn = self.predict_churn(pred_durations, indices, dataset)
 
+        pred_durations[pred_durations==np.inf] = hours_year
+        pred_durations[pred_durations>hours_year] = hours_year
+        pred_durations[pred_durations==np.nan] = hours_year
+
         churn_err = getChurnScores(~df.observed, pred_churn, pred_durations)
 
         return {'churn_acc': churn_err['accuracy'],
@@ -234,7 +239,7 @@ def runParameterSearch(model, include_recency=False, error='concordance', maximi
     """
     nFolds = 10
     nPools = 10
-    bounds = {'penalizer': (500,15000)}
+    bounds = {'penalizer': (500,10000)}
     n_iter = 20
 
     print(model.RESULT_PATH)
@@ -248,7 +253,7 @@ def runParameterSearch(model, include_recency=False, error='concordance', maximi
     f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=error, maximise=maximise)
     bOpt = BayesianOptimization(f, bounds)
 
-    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5, kernel=Matern())
 
     with open(model.RESULT_PATH+'bayes_opt_{}{}.pkl'.format(error, '_rec' if include_recency else ''), 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -271,6 +276,15 @@ def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_
     pool.close()
     pool.join()
 
+    # scores = list(map(
+    #         partial(
+    #             _runParameterSearch,
+    #             model=model,
+    #             penalizer=penalizer,
+    #             include_recency=include_recency,
+    #             error=error,
+    #             maximise=maximise),
+    #         splits))
     return np.mean(scores)
 
 def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False, error='concordance', maximise=False):
