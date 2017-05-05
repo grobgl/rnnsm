@@ -240,7 +240,7 @@ def runParameterSearch(model, include_recency=False, error='concordance', maximi
     nFolds = 10
     nPools = 10
     bounds = {'penalizer': (500,10000)}
-    n_iter = 100
+    n_iter = 20
 
     print(model.RESULT_PATH)
 
@@ -253,7 +253,7 @@ def runParameterSearch(model, include_recency=False, error='concordance', maximi
     f = partial(_evaluatePenalizer, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=error, maximise=maximise)
     bOpt = BayesianOptimization(f, bounds)
 
-    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=10, kernel=Matern())
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5, kernel=Matern())
 
     with open(model.RESULT_PATH+'bayes_opt_{}{}.pkl'.format(error, '_rec' if include_recency else ''), 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
