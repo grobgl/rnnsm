@@ -37,7 +37,6 @@ class SurvivalModel:
 
         dataset = dataset.copy()
         dataset.deltaNextHours = self.transformTargets(dataset.deltaNextHours)
-        del dataset['recency']
         self.cf.fit(dataset, 'deltaNextHours', event_col='observed', show_progress=False)
 
 
@@ -139,7 +138,6 @@ class SurvivalModel:
         recency = self.transformTargets(x_df_unscaled.recency)
 
         index = _get_index(x_df)
-        del x_df['recency']
         survival = self.cf.predict_survival_function(x_df)[index]
 
         # set all values in predicted survival function at position lower than recency to 0
@@ -147,8 +145,11 @@ class SurvivalModel:
         s_df = pd.DataFrame(index=index, columns=['S_ts','int_full', 'int_from_ts', 'int_to_ts', 'E_T'])
         s_df['int_full'] = trapz(survival.values.T, survival.index)
         for i in survival.columns:
-            s_df.loc[i,'S_ts'] = survival[i][survival.index < recency[i]].values[-1] # set survival at time ts
-            survival.loc[survival.index <= recency[i],i] = 0
+            s_filter = survival[i][survival.index < recency[i]]
+            s_df.loc[i,'S_ts'] = 1
+            if s_filter.any():
+                s_df.loc[i,'S_ts'] = s_filter.values[-1] # set survival at time ts
+                survival.loc[survival.index <= recency[i],i] = 0
 
         s_df['int_from_ts'] = trapz(survival.values.T, survival.index)
         s_df['int_to_ts'] = s_df['int_full'] - s_df['int_from_ts']
