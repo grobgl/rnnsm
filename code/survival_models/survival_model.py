@@ -14,8 +14,8 @@ from functools import partial
 from churn_data import ChurnData, getChurnScores
 import sys
 sys.path.insert(0, '../utils')
-from plot_format import *
-from seaborn import apionly as sns
+# from plot_format import *
+# from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -233,7 +233,7 @@ def runParameterSearch(model, include_recency=False, error='concordance', maximi
     """
     nFolds = 10
     nPools = 10
-    bounds = {'penalizer': (0,5000)}
+    bounds = {'penalizer': (500,15000)}
     n_iter = 20
 
     print(model.RESULT_PATH)

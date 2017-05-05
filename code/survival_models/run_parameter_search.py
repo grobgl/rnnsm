@@ -32,7 +32,7 @@ def run():
 
     # runParameterSearch(CoxChurnModel, include_recency=True, error='concordance', maximise=True)
     # runParameterSearch(CoxSqrtChurnModel, include_recency=True, error='concordance', maximise=True)
-    runParameterSearch(CoxLogChurnModel, include_recency=True, error='concordance', maximise=True)
+    runParameterSearch(CoxLogChurnModel, include_recency=True, error='rmse_days', maximise=False)
 
     # runParameterSearch(CoxChurnModel, include_recency=False, error='churn_acc', maximise=True)
     # runParameterSearch(CoxLogChurnModel, include_recency=True)
