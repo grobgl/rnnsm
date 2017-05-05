@@ -29,7 +29,7 @@ hours_year = np.timedelta64(pd.datetime(2017,2,1) - pd.datetime(2016,2,1)) / np.
 
 class SurvivalModel:
     def __init__(self, include_recency=False):
-        self.data = ChurnData(predict='deltaNextHours')
+        self.data = ChurnData(predict='deltaNextHours')#, features=['recency', 'logNumSessions'])
         self.include_recency = include_recency
 
     def fit(self, dataset, indices=None):
@@ -298,6 +298,32 @@ def _runParameterSearch(splits, model=None, penalizer=None, include_recency=Fals
         score = -score
 
     return score
+
+def crossValidate(model, penalizer=2045, include_recency=False, nFolds=10):
+    churnData = ChurnData()
+    cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
+    splits = np.array(list(cv.split(**churnData.train)))
+
+
+    pool = Pool(nFolds)
+
+    scores = pool.map(
+            partial(_scoreModel, model=model, penalizer=penalizer, include_recency=include_recency),
+            splits)
+
+    res = {key: np.mean([score[key] for score in scores]) for key in scores[0].keys()}
+
+    pool.close()
+    pool.join()
+
+    return res
+
+def _scoreModel(split, model=None, penalizer=0, include_recency=False):
+    train_ind, test_ind = split
+    model = model(penalizer=penalizer, include_recency=include_recency)
+    model.fit(model.data.train_df, indices=train_ind)
+
+    return model.getScores(test_ind)
 
 
 def storeModel(model, **model_params):
