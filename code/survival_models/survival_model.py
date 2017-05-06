@@ -14,8 +14,8 @@ from functools import partial
 from churn_data import ChurnData, getChurnScores
 import sys
 sys.path.insert(0, '../utils')
-# from plot_format import *
-# from seaborn import apionly as sns
+from plot_format import *
+from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -51,7 +51,7 @@ class SurvivalModel:
 
     def predict_expectation(self, indices=None, dataset='train'):
         if self.include_recency:
-            return self._predict_expectation_recency_C(indices, dataset)
+            return self._predict_expectation_recency(indices, dataset)
 
         df = self.data.train_df
 
@@ -72,58 +72,7 @@ class SurvivalModel:
 
         return pred.values.reshape(-1)
 
-
-    def _predict_expectation_recency_A(self, indices=None, dataset='train'):
-        df = self.data.train_df
-        df_unscaled = self.data.train_unscaled_df
-
-        if dataset=='test':
-            df = self.data.test_df
-            df_unscaled = self.data.test_unscaled_df
-
-        if indices is None:
-            indices = self.data.split_val_ind
-
-        x_df = df.iloc[indices]
-        x_df_unscaled = df_unscaled.iloc[indices]
-        recency = self.transformTargets(x_df_unscaled.recency)
-
-        index = _get_index(x_df)
-        v = self.cf.predict_survival_function(x_df)[index]
-
-        # set all values in predicted survival function at position lower than recency to 0
-        for i,j in enumerate(v.columns):
-            v[j][v.index < recency[j]] = 0
-
-        targets = pd.DataFrame(recency + trapz(v.values.T, v.index), index=index)
-
-        pred = self.reverseTransformTargets(targets)
-
-        return pred.values.reshape(-1)
-
-    def _predict_expectation_recency_B(self, indices=None, dataset='train'):
-        df = self.data.train_df
-        # df_unscaled = self.data.train_unscaled_df
-
-        if dataset=='test':
-            df = self.data.test_df
-
-        if indices is None:
-            indices = self.data.split_val_ind
-
-        x_df = df.iloc[indices]
-
-        index = _get_index(x_df)
-
-        v = self._predict_survival_function(indices, dataset)
-
-        targets = pd.DataFrame(trapz(v.values.T, v.index), index=index)
-
-        pred = self.reverseTransformTargets(targets)
-
-        return pred.values.reshape(-1)
-
-    def _predict_expectation_recency_C(self, indices=None, dataset='train'):
+    def _predict_expectation_recency(self, indices=None, dataset='train'):
         df = self.data.train_df
         df_unscaled = self.data.train_unscaled_df
 
@@ -228,6 +177,9 @@ class SurvivalModel:
 
         return {'churn_acc': churn_err['accuracy'],
                 'churn_auc': churn_err['auc'],
+                'churn_prec': churn_err['precision'],
+                'churn_recall': churn_err['recall'],
+                'churn_f1': churn_err['f1'],
                 'rmse_days': np.sqrt(mean_squared_error(df.deltaNextHours, pred_durations)) / 24,
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
@@ -381,15 +333,21 @@ def storeModel(model, **model_params):
         pickle.dump(pred_val, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def showJointPlot(model, width=1, height=None):
+def showJointPlot(model, pred_val, width=1, height=None):
     observed = model.data.split_val_df.observed.values.astype('bool').reshape(-1)
-    pred_val = model.predict_expectation()
+    # pred_val = model.predict_expectation()
 
     df = pd.DataFrame()
-    df['predicted'] = pred_val[observed] / 24
-    df['actual'] = model.data.split_val['y'][observed] / 24
+    df['predicted (days)'] = pred_val[observed] / 24
+    df['actual (days)'] = model.data.split_val['y'][observed] / 24
+    df['residual (days)'] = df['predicted (days)'] - df['actual (days)']
 
-    jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='kde', size=figsize(.5,.5)[0])
+    # jointgrid = sns.jointplot('actual', 'predicted', data=df, kind='resid', size=figsize(.5,.5)[0])
+    grid = sns.JointGrid('actual (days)', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,250), ylim=(-100,100))
+    grid = grid.plot_marginals(sns.distplot, kde=False)#, shade=True)
+    grid = grid.plot_joint(sns.kdeplot, shade=True, n_levels=10, cmap='Blues', shade_lowest=False, cut=0)
+    # grid = grid.plot_joint(sns.kdeplot, shade=False, n_levels=100, cmap='Blues_d')
+    # grid = grid.plot_joint(plt.scatter)#sns.kdeplot, shade=True)
 
     plt.show()
 

@@ -147,12 +147,14 @@ class ChurnData:
 def getChurnScores(y_true, y_pred, y_pred_proba):
     accuracy = metrics.accuracy_score(y_true, y_pred)
     auc = metrics.roc_auc_score(y_true, y_pred_proba)
-    f1 = metrics.f1_score(y_true, y_pred)
+    precision, recall, f1 = metrics.precision_recall_fscore_support(y_true, y_pred)
     report = metrics.classification_report(y_true, y_pred)
     confusion_matrix =  metrics.confusion_matrix(y_true, y_pred)
 
     return {'accuracy': accuracy,
             'auc': auc,
+            'precision': precision,
+            'recall': recall,
             'f1': f1,
             'classification_report': report,
             'confusion_matrix': confusion_matrix}

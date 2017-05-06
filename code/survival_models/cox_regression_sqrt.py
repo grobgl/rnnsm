@@ -15,7 +15,7 @@ from functools import partial
 class CoxSqrtChurnModel(SurvivalModel):
     RESULT_PATH = '../../results/churn/cox_regression_sqrt/'
 
-    def __init__(self, penalizer=0, include_recency=False):
+    def __init__(self, penalizer=2100, include_recency=False):
         super().__init__(include_recency=include_recency)
         self.cf = CoxPHFitter(penalizer=penalizer)
 
