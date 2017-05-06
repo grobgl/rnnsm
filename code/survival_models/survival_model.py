@@ -232,7 +232,37 @@ class SurvivalModel:
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
 
-def runParameterSearch(model, include_recency=False, error='concordance', maximise=True):
+def runGridSearch(model, include_recency=False):
+    """
+    Cross-validated search for parameters
+
+    """
+    nFolds = 10
+    nPools = 10
+    bounds = (2000,3000)
+    n_iter = 21
+    space = np.linspace(bounds[0],bounds[1],n_iter)
+
+    print(model.RESULT_PATH)
+
+    # load churn data for splitting fold stratas
+    churnData = ChurnData()
+
+    cv = StratifiedKFold(n_splits=nFolds, shuffle=True, random_state=42)
+    splits = np.array(list(cv.split(**churnData.train)))
+
+    scores = []
+    for p in space: _evaluatePenalizer(p, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=None)
+
+    res = {k: [d[k] for d in scores] for k in scores[0]}
+
+    with open(model.RESULT_PATH+'grid_search{}.pkl'.format('_rec' if include_recency else ''), 'wb') as handle:
+        pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return res
+
+
+def runBayesOpt(model, include_recency=False, error='concordance', maximise=True):
     """
     Cross-validated search for parameters
 
@@ -291,6 +321,9 @@ def _runParameterSearch(splits, model=None, penalizer=None, include_recency=Fals
     train_ind, test_ind = splits
     model = model(penalizer=penalizer, include_recency=include_recency)
     model.fit(model.data.train_df, indices=train_ind)
+
+    if error is None:
+        return score
 
     score = model.getScores(test_ind)[error]
 
