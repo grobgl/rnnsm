@@ -239,7 +239,7 @@ def runParameterSearch(model, include_recency=False, error='concordance', maximi
     """
     nFolds = 10
     nPools = 10
-    bounds = {'penalizer': (500,10000)}
+    bounds = {'penalizer': (2000,3000)}
     n_iter = 20
 
     print(model.RESULT_PATH)

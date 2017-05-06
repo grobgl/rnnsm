@@ -13,11 +13,11 @@ def run():
     # runParameterSearch(CoxChurnModel, include_recency=False, error='rmse_days', maximise=False)
     # runParameterSearch(CoxChurnModel, include_recency=False, error='concordance', maximise=True)
     # runParameterSearch(CoxChurnModel, include_recency=False, error='churn_acc', maximise=True)
-    # runParameterSearch(CoxChurnModel, include_recency=False, error='churn_auc', maximise=True)
+    runParameterSearch(CoxChurnModel, include_recency=False, error='churn_auc', maximise=True)
 
     # runParameterSearch(CoxChurnModel, include_recency=True, error='rmse_days', maximise=False)
     # runParameterSearch(CoxChurnModel, include_recency=True, error='concordance', maximise=True)
-    runParameterSearch(CoxChurnModel, include_recency=True, error='churn_acc', maximise=True)
+    # runParameterSearch(CoxChurnModel, include_recency=True, error='churn_acc', maximise=True)
     # runParameterSearch(CoxChurnModel, include_recency=True, error='churn_auc', maximise=True)
 
     # runParameterSearch(CoxChurnModel, include_recency=True, error='rmse_days', maximise=False)
