@@ -252,11 +252,13 @@ def runGridSearch(model, include_recency=False):
     splits = np.array(list(cv.split(**churnData.train)))
 
     scores = []
-    for p in space: _evaluatePenalizer(p, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=None)
+    for p in space:
+        print(p)
+        scores.append(_evaluatePenalizer(p, model=model, splits=splits, nPools=nPools, include_recency=include_recency, error=None))
 
-    res = {k: [d[k] for d in scores] for k in scores[0]}
+    res = {'penalties': space, 'scores': {k: [d[k] for d in scores] for k in scores[0]}}
 
-    with open(model.RESULT_PATH+'grid_search{}.pkl'.format('_rec' if include_recency else ''), 'wb') as handle:
+    with open(model.RESULT_PATH+'grid_search{}_{}.pkl'.format('_rec' if include_recency else '', n_iter), 'wb') as handle:
         pickle.dump(res, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return res
@@ -315,6 +317,10 @@ def _evaluatePenalizer(penalizer, model=None, splits=None, nPools=None, include_
     #             error=error,
     #             maximise=maximise),
     #         splits))
+
+    if error is None:
+        return {k: np.mean([d[k] for d in scores]) for k in scores[0]}
+
     return np.mean(scores)
 
 def _runParameterSearch(splits, model=None, penalizer=None, include_recency=False, error='concordance', maximise=False):
@@ -322,10 +328,12 @@ def _runParameterSearch(splits, model=None, penalizer=None, include_recency=Fals
     model = model(penalizer=penalizer, include_recency=include_recency)
     model.fit(model.data.train_df, indices=train_ind)
 
+    score = model.getScores(test_ind)
+
     if error is None:
         return score
 
-    score = model.getScores(test_ind)[error]
+    score = score[error]
 
     if not maximise:
         score = -score
