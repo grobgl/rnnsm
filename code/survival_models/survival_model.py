@@ -14,8 +14,8 @@ from functools import partial
 from churn_data import ChurnData, getChurnScores
 import sys
 sys.path.insert(0, '../utils')
-from plot_format import *
-from seaborn import apionly as sns
+# from plot_format import *
+# from seaborn import apionly as sns
 
 
 predPeriod = {
@@ -177,9 +177,9 @@ class SurvivalModel:
 
         return {'churn_acc': churn_err['accuracy'],
                 'churn_auc': churn_err['auc'],
-                'churn_prec': churn_err['precision'],
-                'churn_recall': churn_err['recall'],
-                'churn_f1': churn_err['f1'],
+                'churn_prec': churn_err['precision'][1],
+                'churn_recall': churn_err['recall'][1],
+                'churn_f1': churn_err['f1'][1],
                 'rmse_days': np.sqrt(mean_squared_error(df.deltaNextHours, pred_durations)) / 24,
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
