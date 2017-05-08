@@ -57,8 +57,9 @@ class CoxChurnModel_short(CoxChurnModel):
 
         cens = ~df.observed.astype('bool') & ~df.churnedFull.astype('bool')
         uncens = df.observed.astype('bool')
-        rmse_days_uncens = np.sqrt(mean_squared_error(df.deltaNextHours[uncens], pred_durations[uncens])) / 24
-        rmse_days_cens = np.sqrt(mean_squared_error(df.deltaNextHoursFull[cens], pred_durations[cens])) / 24
+        rmse_days_uncens = np.sqrt(mean_squared_error(df.deltaNextHours[uncens]/24, pred_durations[uncens]/24))
+        rmse_days_cens = np.sqrt(mean_squared_error(df.deltaNextHoursFull[cens]/24, pred_durations[cens]/24))
+        rmse_days_full = np.sqrt((uncens.sum()*(rmse_days_uncens**2) + cens.sum()*(rmse_days_cens**2))/(cens.sum() + uncens.sum()))
 
         return {'churn_acc': churn_err['accuracy'],
                 'churn_auc': churn_err['auc'],
@@ -71,7 +72,9 @@ class CoxChurnModel_short(CoxChurnModel):
                 'churn_f1': churn_err['f1'][1],
                 'rmse_days_uncens': rmse_days_uncens,
                 'rmse_days_cens': rmse_days_cens,
-                'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
+                'rmse_days_full': rmse_days_full,
+                'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed),
+                'concordance_full': concordance_index(df.deltaNextHoursFull, pred_durations, ~df.churnedFull.astype('bool'))}
 
 
 class CoxSqrtChurnModel_short(CoxChurnModel_short):
@@ -82,4 +85,14 @@ class CoxSqrtChurnModel_short(CoxChurnModel_short):
 
     def reverseTransformTargets(self, targets):
         return targets**2
+
+
+class CoxDayChurnModel_short(CoxChurnModel_short):
+    RESULT_PATH = '../../results/churn/cox_regression_sqrt_short/'
+
+    def transformTargets(self, targets):
+        return targets/24
+
+    def reverseTransformTargets(self, targets):
+        return targets*24
 

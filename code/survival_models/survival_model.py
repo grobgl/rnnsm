@@ -123,7 +123,7 @@ class SurvivalModel:
                 'churn_prec': churn_err['precision'][1],
                 'churn_recall': churn_err['recall'][1],
                 'churn_f1': churn_err['f1'][1],
-                'rmse_days': np.sqrt(mean_squared_error(df.deltaNextHours, pred_durations)) / 24,
+                'rmse_days': np.sqrt(mean_squared_error(df.deltaNextHours/24, pred_durations/24)),
                 'concordance': concordance_index(df.deltaNextHours, pred_durations, df.observed)}
 
 
