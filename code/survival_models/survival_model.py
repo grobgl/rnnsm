@@ -166,7 +166,7 @@ def runBayesOpt(model, include_recency=False, error='concordance', maximise=True
     """
     nFolds = 10
     nPools = 10
-    bounds = {'penalizer': (2000,3000)}
+    bounds = {'penalizer': (1000,5000)}
     n_iter = 20
 
     print(model.RESULT_PATH)
