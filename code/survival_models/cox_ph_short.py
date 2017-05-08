@@ -4,7 +4,7 @@ from cox_regression_sqrt import *
 
 predPeriod = {
     'start': pd.Timestamp('2016-02-01'),
-    'mid': pd.Timestamp('2016-04-01')
+    'mid': pd.Timestamp('2016-04-01'),
     'end': pd.Timestamp('2016-06-01')
 }
 predPeriodMidHours = (predPeriod['mid'] - predPeriod['start']) / np.timedelta64(1, 'h')
