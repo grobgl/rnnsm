@@ -49,49 +49,27 @@ class SurvivalModel:
         return targets
 
 
-    def predict_expectation(self, indices=None, dataset='train'):
+    def predict_expectation(self, df, df_unscaled):
         if self.include_recency:
-            return self._predict_expectation_recency(indices, dataset)
+            return self._predict_expectation_recency(df, df_unscaled)
 
-        df = self.data.train_df
+        index = _get_index(df)
 
-        if dataset=='test':
-            df = self.data.test_df
-
-        if indices is None:
-            indices = self.data.split_val_ind
-
-        x_df = df.iloc[indices]
-        index = _get_index(x_df)
-
-        # pred = self.reverseTransformTargets(self.cf.predict_median(x_df))
-        # pred[np.isinf(pred)] = 2*predPeriodHours
-        # pred = qth_survival_times(.5, self._predict_survival_function(indices, dataset)[index])
-        # pred = self.reverseTransformTargets(pred)
-        pred = self.reverseTransformTargets(self.cf.predict_expectation(x_df))
+        pred = self.reverseTransformTargets(self.cf.predict_expectation(df))
 
         return pred.values.reshape(-1)
 
-    def _predict_expectation_recency(self, indices=None, dataset='train'):
-        df = self.data.train_df
-        df_unscaled = self.data.train_unscaled_df
 
-        if dataset=='test':
-            df = self.data.test_df
-            df_unscaled = self.data.test_unscaled_df
+    def _predict_expectation_recency(self, df, df_unscaled):
+        x_df = df
+        x_df_unscaled = df_unscaled
 
-        if indices is None:
-            indices = self.data.split_val_ind
-
-        x_df = df.iloc[indices]
-        x_df_unscaled = df_unscaled.iloc[indices]
         recency = self.transformTargets(x_df_unscaled.recency)
 
         index = _get_index(x_df)
         survival = self.cf.predict_survival_function(x_df)[index]
 
         # set all values in predicted survival function at position lower than recency to 0
-        # S_ts = np.zeros(len(index)) # survival at time ts
         s_df = pd.DataFrame(index=index, columns=['S_ts','int_full', 'int_from_ts', 'int_to_ts', 'E_T'])
         s_df['int_full'] = trapz(survival.values.T, survival.index)
         for i in survival.columns:
@@ -110,64 +88,29 @@ class SurvivalModel:
 
         return pred
 
-    def _predict_survival_function(self, indices=None, dataset='train'):
-        df = self.data.train_df
-        df_unscaled = self.data.train_unscaled_df
 
-        if dataset=='test':
-            df = self.data.test_df
-            df_unscaled = self.data.test_unscaled_df
-
-        if indices is None:
-            indices = self.data.split_val_ind
-
-        x_df = df.iloc[indices]
-        x_df_unscaled = df_unscaled.iloc[indices]
-        recency = self.transformTargets(x_df_unscaled.recency)
-
-        index = _get_index(x_df)
-        cum_hazard = self.cf.predict_cumulative_hazard(x_df)
-
-        # set all values in hazard function at position lower than recency to 0
-        for i in cum_hazard.columns:
-            # s = cum_hazard[i][cum_hazard.index < recency[i]].sum()
-            cum_hazard[i] -= cum_hazard[i][cum_hazard.index <= recency[i]].values[-1]
-            cum_hazard[i][cum_hazard.index <= recency[i]] = 0
-
-        # survival function
-        v = np.exp(-cum_hazard)
-
-        return v
-
-    def predict_churn(self, pred_durations, indices=None, dataset='train'):
-        df_unscaled = self.data.train_unscaled_df
-
-        if dataset=='test':
-            df_unscaled = self.data.test_unscaled_df
-
-        if indices is None:
-            indices = self.data.split_val_ind
-
-        x_df_unscaled = df_unscaled.iloc[indices]
-
-        churned = (pred_durations - x_df_unscaled.recency.values.reshape(-1)) > predPeriodHours
+    def predict_churn(self, pred_durations, df_unscaled):
+        churned = (pred_durations - df_unscaled.recency.values.reshape(-1)) > predPeriodHours
 
         return churned.reshape(-1)
 
 
     def getScores(self, indices=None, dataset='train'):
         df = self.data.train_df
+        df_unscaled = self.data.train_unscaled_df
 
         if dataset=='test':
             df = self.data.test_df
+            df_unscaled = self.data.test_unscaled_df
 
         if indices is None:
             indices = self.data.split_val_ind
 
         df = df.iloc[indices]
+        df_unscaled = df_unscaled.iloc[indices]
 
-        pred_durations = self.predict_expectation(indices, dataset)
-        pred_churn = self.predict_churn(pred_durations, indices, dataset)
+        pred_durations = self.predict_expectation(df, df_unscaled)
+        pred_churn = self.predict_churn(pred_durations, df_unscaled)
 
         pred_durations[pred_durations==np.inf] = hours_year
         pred_durations[pred_durations>hours_year] = hours_year

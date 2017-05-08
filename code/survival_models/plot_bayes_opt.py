@@ -89,7 +89,7 @@ def plot_grid_search(width=1, height=None):
 
     scores = {'churn_auc': 'Churn AUC',
               'churn_acc': 'Churn Accuracy',
-              # 'rmse_days': 'RMSE',
+              'rmse_days': 'RMSE',
               'concordance': 'Concordance'}
     x = res['penalties']
     y = res['scores']

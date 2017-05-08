@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 
 class ChurnData:
-    def __init__(self, features=None, predict='churned'):
+    def __init__(self, features=None, predict='churned', dataset='../../data/churn/churn.pkl'):
         """
         Provides scaled and split aggregated customer session data
 
@@ -14,7 +14,7 @@ class ChurnData:
         :predict: value to predict: 'churned' or 'deltaNextHours'
         """
 
-        self.df = pd.read_pickle('../../data/churn/churn.pkl')
+        self.df = pd.read_pickle(dataset)
         self.pred_col = predict
 
         if features is None:
@@ -28,6 +28,8 @@ class ChurnData:
         Select subset of features from original dataset. Re-creates all X/y sets accordingly
         """
         self.features = np.array(features)
+
+        xCols = ['deltaNextHours'] + self.features.tolist()
 
         # set deltaNextHours as first column in X
         self.y, self.X = dmatrices(
@@ -47,9 +49,12 @@ class ChurnData:
         self.X_train = self.scaler.fit_transform(self.X_train0)
         self.X_test = self.scaler.transform(self.X_test0)
 
-        # un-scale deltaNextHours column
-        self.X_train.T[0] = self.X_train0.T[0]
-        self.X_test.T[0] = self.X_test0.T[0]
+        # un-scale columns
+        for col in ['deltaNextHours', 'deltaNextHoursFull', 'churnedFull']:
+            if col in xCols:
+                i = xCols.index(col)
+                self.X_train.T[i] = self.X_train0.T[i]
+                self.X_test.T[i] = self.X_test0.T[i]
 
         # further split training set into train and validation sets
         # use stratified split
