@@ -68,6 +68,8 @@ class CoxChurnModel_short(CoxChurnModel):
 
 
 class CoxSqrtChurnModel_short(CoxChurnModel_short):
+    RESULT_PATH = '../../results/churn/cox_regression_sqrt_short/'
+
     def transformTargets(self, targets):
         return np.sqrt(targets)
 
