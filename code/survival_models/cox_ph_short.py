@@ -8,6 +8,7 @@ predPeriod = {
     'end': pd.Timestamp('2016-06-01')
 }
 predPeriodMidHours = (predPeriod['mid'] - predPeriod['start']) / np.timedelta64(1, 'h')
+predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
 
 class CoxChurnModel_short(CoxChurnModel):
     RESULT_PATH = '../../results/churn/cox_regression_short/'
@@ -24,8 +25,8 @@ class CoxChurnModel_short(CoxChurnModel):
 
         return super().fit(dataset, indices)
 
-    def predict_churn(self, pred_durations, df_unscaled):
-        churned = (pred_durations - df_unscaled.recency.values.reshape(-1)) > predPeriodMidHours
+    def predict_churn(self, pred_durations, df_unscaled, threshold):
+        churned = (pred_durations - df_unscaled.recency.values.reshape(-1)) > threshold
 
         return churned.reshape(-1)
 
@@ -44,13 +45,15 @@ class CoxChurnModel_short(CoxChurnModel):
         df_unscaled = df_unscaled.iloc[indices]
 
         pred_durations = self.predict_expectation(df, df_unscaled)
-        pred_churn = self.predict_churn(pred_durations, df_unscaled)
+        pred_churn = self.predict_churn(pred_durations, df_unscaled, predPeriodMidHours)
+        pred_churn_full = self.predict_churn(pred_durations, df_unscaled, predPeriodHours)
 
         pred_durations[pred_durations==np.inf] = hours_year
         pred_durations[pred_durations>hours_year] = hours_year
         pred_durations[pred_durations==np.nan] = hours_year
 
         churn_err = getChurnScores(~df.observed, pred_churn, pred_durations)
+        churn_err_full = getChurnScores(df.churnedFull, pred_churn_full, pred_durations)
 
         cens = ~df.observed.astype('bool') & ~df.churnedFull.astype('bool')
         uncens = df.observed.astype('bool')
@@ -61,6 +64,10 @@ class CoxChurnModel_short(CoxChurnModel):
                 'churn_auc': churn_err['auc'],
                 'churn_prec': churn_err['precision'][1],
                 'churn_recall': churn_err['recall'][1],
+                'churn_acc_full': churn_err_full['accuracy'],
+                'churn_auc_full': churn_err_full['auc'],
+                'churn_prec_full': churn_err_full['precision'][1],
+                'churn_recall_full': churn_err_full['recall'][1],
                 'churn_f1': churn_err['f1'][1],
                 'rmse_days_uncens': rmse_days_uncens,
                 'rmse_days_cens': rmse_days_cens,
