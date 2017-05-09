@@ -41,8 +41,8 @@ class CoxChurnModel_short(CoxChurnModel):
         if indices is None:
             indices = self.data.split_val_ind
 
-        df = df.iloc[indices]
-        df_unscaled = df_unscaled.iloc[indices]
+        df = df.iloc[indices].copy()
+        df_unscaled = df_unscaled.iloc[indices].copy()
 
         pred_durations = self.predict_expectation(df, df_unscaled)
         pred_churn = self.predict_churn(pred_durations, df_unscaled, predPeriodMidHours)
@@ -52,8 +52,8 @@ class CoxChurnModel_short(CoxChurnModel):
         pred_durations[pred_durations>hours_year] = hours_year
         pred_durations[pred_durations==np.nan] = hours_year
 
-        churn_err = getChurnScores(~df.observed, pred_churn, pred_durations)
-        churn_err_full = getChurnScores(df.churnedFull, pred_churn_full, pred_durations)
+        churn_err = getChurnScores(~df.observed.values, pred_churn, pred_durations)
+        churn_err_full = getChurnScores(df.churnedFull.values, pred_churn_full, pred_durations)
 
         cens = ~df.observed.astype('bool') & ~df.churnedFull.astype('bool')
         uncens = df.observed.astype('bool')
