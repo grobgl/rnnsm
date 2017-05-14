@@ -35,8 +35,16 @@ class RnnData:
             d._initialise()
             return d
 
-    def get_xy(self, include_churned=True, min_n_sessions=10, n_sessions=10):
-        x_train, x_test, y_train, y_test = self.x_train, self.x_test, self.y_train, self.y_test
+    def get_xy(self, include_churned=True, min_n_sessions=10, n_sessions=10, preset='deltaPrevHours'):
+        x_train, x_test, y_train, y_test = self.x_train, self.x_test, self.y_train_unscaled, self.y_test_unscaled
+        feature_indices = self.presets[preset]['feature_indices']
+        target_index = self.presets[preset]['target_index']
+
+        x_train = x_train.apply(lambda x: x.T[feature_indices].T)
+        y_train = y_train[self.presets[preset]['target']]
+        x_test = x_test.apply(lambda x: x.T[feature_indices].T)
+        y_test = y_test[self.presets[preset]['target']]
+
         if not include_churned:
             x_train = x_train[~x_train.index.isin(self.churned_cust)]
             y_train = y_train[~y_train.index.isin(self.churned_cust)]
@@ -49,6 +57,9 @@ class RnnData:
             y_train = y_train[y_train.index.isin(cust)]
             x_test = x_test[x_test.index.isin(cust)]
             y_test = y_test[y_test.index.isin(cust)]
+
+        if n_sessions == -1:
+            n_sessions = self.num_sessions.max()
 
         x_train = _pad_x(x_train, n_sessions)
         x_test = _pad_x(x_test, n_sessions)
@@ -67,33 +78,56 @@ class RnnData:
         test_df_unscaled = self.test_df_unscaled = df_0[df_0.customerId.isin(churned.index[test_i])]
 
         # scaling
-        features_0 = self.features_0 = list(set(df_0.columns) - set(['customerId','startUserTime','deltaNextHours', 'churned']))
+        features_numeric = self.features_numeric = sorted(list(set(df_0.columns) - set(['customerId','startUserTime'])))
         train_df_scaled = self.train_df_scaled = train_df_unscaled.copy()
         test_df_scaled = test_df_unscaled.copy()
         scaler = self.scaler = StandardScaler()
-        train_df_scaled[features_0] = scaler.fit_transform(train_df_unscaled[features_0])
-        test_df_scaled[features_0] = scaler.transform(test_df_unscaled[features_0])
+        train_df_scaled[features_numeric] = scaler.fit_transform(train_df_unscaled[features_numeric])
+        test_df_scaled[features_numeric] = scaler.transform(test_df_unscaled[features_numeric])
         self.train_df_scaled = train_df_scaled
         self.test_df_scaled = test_df_scaled
 
-        # convert to array
-        x_train, y_train = self.x_train, self.y_train = _df_to_xy_array(train_df_scaled, features_0)
-        x_test, y_test = self.x_test, self.y_test = _df_to_xy_array(test_df_scaled, features_0)
+        # storing feature/target combinations as features for quick access
+        # format: predict/mainFeature
+        self.presets = {
+            'churn_deltaNextHours': {
+                'features': sorted(list(set(self.features_numeric) - \
+                                        set(['deltaNextHours', 'churned']))),
+                'target': 'churned' },
+            'deltaPrevHours': {
+                'features': sorted(list(set(self.features_numeric) - \
+                                        set(['deltaNextHours', 'churned']))),
+                'target': 'deltaPrevHours' },
+            'startUserTimeHours': {
+                'features': sorted(list(set(self.features_numeric) - \
+                                        set(['deltaNextHours', 'churned']))),
+                'target': 'startUserTimeHours' }}
 
-        # store customer idsk
-        train_cust = self.train_cust = y_train.index.values
-        test_cust = self.test_cust = y_test.index.values
+        for preset in self.presets:
+            self.presets[preset]['feature_indices'] = list(map(self.features_numeric.index, self.presets[preset]['features']))
+            self.presets[preset]['target_index'] = self.features_numeric.index(self.presets[preset]['target'])
+
+        # convert to array
+        self.x_train, self.y_train = _df_to_xy_array(train_df_scaled, features_numeric)
+        self.x_train_unscaled, self.y_train_unscaled = _df_to_xy_array(train_df_unscaled, features_numeric)
+        self.x_test, self.y_test = _df_to_xy_array(test_df_scaled, features_numeric)
+        self.x_test_unscaled, self.y_test_unscaled = _df_to_xy_array(test_df_unscaled, features_numeric)
+
+        # store customer ids
+        train_cust = self.train_cust = self.y_train.index.values
+        test_cust = self.test_cust = self.y_test.index.values
 
         with open(self.PATH+'rnn_data.pkl', 'wb') as handle:
             pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 def _pad_x(x, n):
     return np.array(list(map(lambda _x: np.pad(_x[-n:], ((max(n-len(_x),0),0),(0,0)), 'constant'), x.values)))
 
 def _df_to_xy_array(df, features):
     grouped = df.groupby('customerId')
-    x = grouped.apply(lambda g: g[features].as_matrix())
-    y = grouped.deltaNextHours.last()
+    x = grouped.apply(lambda g: g.head(-1)[features].as_matrix())
+    y = grouped.last()
 
     return x, y
 
