@@ -72,6 +72,7 @@ def createChurnRnnDS():
     df_onehot['startUserTime'] = df.startUserTime
     df_onehot['startUserTimeHours'] = (df_onehot['startUserTime'] - obsPeriod['start']) / np.timedelta64(1,'h')
     df_onehot['churned'] = df.churned.astype('bool')
+    df_onehot['device'] = df.device
 
 
     return df_onehot

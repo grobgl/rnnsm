@@ -5,7 +5,7 @@ import os.path
 import pickle
 from functools import partial
 from multiprocessing import Pool
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 
 obsPeriod = {
@@ -35,10 +35,15 @@ class RnnData:
             d._initialise()
             return d
 
-    def get_xy(self, include_churned=True, min_n_sessions=10, n_sessions=10, preset='deltaPrevHours'):
+    def get_xy(self, include_churned=True, min_n_sessions=10, n_sessions=10, encode_devices=True,  preset='deltaPrevHours'):
         x_train, x_test, y_train, y_test = self.x_train, self.x_test, self.y_train_unscaled, self.y_test_unscaled
         feature_indices = self.presets[preset]['feature_indices']
         target_index = self.presets[preset]['target_index']
+
+        if encode_devices:
+            feature_indices = [self.deviceEncIndex] + feature_indices
+        else:
+            feature_indices = self.deviceIndices + feature_indices
 
         x_train = x_train.apply(lambda x: x.T[feature_indices].T)
         y_train = y_train[self.presets[preset]['target']]
@@ -72,13 +77,17 @@ class RnnData:
         self.churned_cust = churned.index[churned].values
         self.num_sessions = self.df_0.groupby('customerId').customerId.count()
 
+        # encode devices
+        self.deviceEncoder = LabelEncoder()
+        df_0['device_enc'] = self.deviceEncoder.fit_transform(df_0.device)
+
         # train/test split, stratify by churn
         train_i, test_i = self.train_i, self.test_i = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(churned, churned.values))
         train_df_unscaled = self.train_df_unscaled = df_0[df_0.customerId.isin(churned.index[train_i])]
         test_df_unscaled = self.test_df_unscaled = df_0[df_0.customerId.isin(churned.index[test_i])]
 
         # scaling
-        features_numeric = self.features_numeric = sorted(list(set(df_0.columns) - set(['customerId','startUserTime'])))
+        features_numeric = self.features_numeric = sorted(list(set(df_0.columns) - set(['customerId','startUserTime', 'device_enc', 'device'])))
         train_df_scaled = self.train_df_scaled = train_df_unscaled.copy()
         test_df_scaled = test_df_unscaled.copy()
         scaler = self.scaler = StandardScaler()
@@ -87,31 +96,36 @@ class RnnData:
         self.train_df_scaled = train_df_scaled
         self.test_df_scaled = test_df_scaled
 
+        train_features = self.train_features = sorted(list(set(df_0.columns) - set(['customerId','startUserTime'])))
+
         # storing feature/target combinations as features for quick access
         # format: predict/mainFeature
+        self.deviceEncIndex = train_features.index('device_enc')
+        self.devices = [x for x in train_features if x.startswith('device[')]
+        self.deviceIndices = list(map(train_features.index, self.devices))
         self.presets = {
             'churn_deltaNextHours': {
-                'features': sorted(list(set(self.features_numeric) - \
-                                        set(['deltaNextHours', 'churned']))),
+                'features': sorted(list(set(self.train_features) - \
+                                        set(['deltaNextHours', 'churned', 'device_enc', 'device'] + self.devices))),
                 'target': 'churned' },
             'deltaPrevHours': {
-                'features': sorted(list(set(self.features_numeric) - \
-                                        set(['deltaNextHours', 'churned']))),
+                'features': sorted(list(set(self.train_features) - \
+                                        set(['deltaNextHours', 'churned', 'device_enc', 'device'] + self.devices))),
                 'target': 'deltaPrevHours' },
             'startUserTimeHours': {
-                'features': sorted(list(set(self.features_numeric) - \
-                                        set(['deltaNextHours', 'churned']))),
+                'features': sorted(list(set(self.train_features) - \
+                                        set(['deltaNextHours', 'churned', 'device_enc', 'device'] + self.devices))),
                 'target': 'startUserTimeHours' }}
 
         for preset in self.presets:
-            self.presets[preset]['feature_indices'] = list(map(self.features_numeric.index, self.presets[preset]['features']))
-            self.presets[preset]['target_index'] = self.features_numeric.index(self.presets[preset]['target'])
+            self.presets[preset]['feature_indices'] = list(map(self.train_features.index, self.presets[preset]['features']))
+            self.presets[preset]['target_index'] = self.train_features.index(self.presets[preset]['target'])
 
         # convert to array
-        self.x_train, self.y_train = _df_to_xy_array(train_df_scaled, features_numeric)
-        self.x_train_unscaled, self.y_train_unscaled = _df_to_xy_array(train_df_unscaled, features_numeric)
-        self.x_test, self.y_test = _df_to_xy_array(test_df_scaled, features_numeric)
-        self.x_test_unscaled, self.y_test_unscaled = _df_to_xy_array(test_df_unscaled, features_numeric)
+        self.x_train, self.y_train = _df_to_xy_array(train_df_scaled, train_features)
+        self.x_train_unscaled, self.y_train_unscaled = _df_to_xy_array(train_df_unscaled, train_features)
+        self.x_test, self.y_test = _df_to_xy_array(test_df_scaled, train_features)
+        self.x_test_unscaled, self.y_test_unscaled = _df_to_xy_array(test_df_unscaled, train_features)
 
         # store customer ids
         train_cust = self.train_cust = self.y_train.index.values
