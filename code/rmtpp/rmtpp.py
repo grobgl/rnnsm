@@ -12,10 +12,7 @@ from keras import backend as K
 
 from sklearn.metrics import mean_squared_error
 
-import sys
-sys.path.insert(0, '../rnn')
-
-from rnn_data import *
+from rmtpp_data import *
 
 seed = 42
 np.random.seed(seed)
@@ -23,7 +20,7 @@ np.random.seed(seed)
 class Rmtpp:
 
     def __init__(self, name, run):
-        self.data = RnnData.instance()
+        self.data = RmtppData.instance()
         self.set_x_y()
         self.set_model()
         self.name = name
@@ -37,7 +34,7 @@ class Rmtpp:
         self.x_test, \
         self.y_train, \
         self.y_test, \
-        features = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset=preset)
+        features = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset=preset, target_sequences=True)
 
         temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevHours', 'startUserTimeHours']
         device_index = features.index('device')
@@ -51,10 +48,13 @@ class Rmtpp:
         self.x_test_temporal = self.x_test[:,:,temporal_indices]
         self.x_test_behav = self.x_test[:,:,behav_indices]
 
+        self.y_train = self.y_train.reshape((-1, n_sessions, 1))
+        self.y_test = self.y_test.reshape((-1, n_sessions, 1))
+
     def load_best_weights(self):
         self.model.load_weights(self.best_model_cp_file)
 
-    def set_model(self, lr=1.):
+    def set_model(self, lr=.1):
         self.lr = lr
         len_seq = self.x_train.shape[1]
         n_devices = np.unique(self.x_train_devices).shape[0]
@@ -76,9 +76,9 @@ class Rmtpp:
 
         # dense_output= Dense(dense_neurons)(merge_inputs)
 
-        lstm_output = LSTM(lstm_neurons, recurrent_activation='relu', activation='linear')(merge_inputs)
+        lstm_output = LSTM(lstm_neurons, recurrent_activation='relu', activation='linear', return_sequences=True)(merge_inputs)
 
-        predictions = Dense(1, activation='tanh', name='predictions')(lstm_output)
+        predictions = Dense(1, activation='relu', name='predictions')(lstm_output)
 
         model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
         model.compile(loss="mean_squared_error", optimizer=Adam(lr=lr))

@@ -26,12 +26,10 @@ def createChurnRnnDS():
     """
     df = pd.read_pickle('../../data/cleaned/stage1_obs_pred.pkl')
 
-    # only look at sessions in obs period + first session in pred period (if available)
+    # only look at sessions in obs period
     df_obs = df[df.startUserTime < obsPeriod['end']]
     cust = df_obs.customerId.unique()
-    df_pred = df[((df.startUserTime >= predPeriod['start']) & (df.startUserTime < predPeriod['end'])) & df.customerId.isin(cust)]
-    df_pred = df_pred.groupby('customerId').first().reset_index()
-    df = pd.concat([df_obs, df_pred])
+    df = df_obs
 
     # customers with session in act period
     actCust = df[(df.startUserTime >= actPeriod['start']) &
