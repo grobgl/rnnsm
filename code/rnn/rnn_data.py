@@ -38,12 +38,15 @@ class RnnData:
     def get_xy(self, include_churned=True, min_n_sessions=10, n_sessions=10, encode_devices=True,  preset='deltaPrevHours'):
         x_train, x_test, y_train, y_test = self.x_train, self.x_test, self.y_train_unscaled, self.y_test_unscaled
         feature_indices = self.presets[preset]['feature_indices']
+        features = self.presets[preset]['features']
         target_index = self.presets[preset]['target_index']
 
         if encode_devices:
             feature_indices = [self.deviceEncIndex] + feature_indices
+            features = ['device'] + features
         else:
             feature_indices = self.deviceIndices + feature_indices
+            features = self.devices + features
 
         x_train = x_train.apply(lambda x: x.T[feature_indices].T)
         y_train = y_train[self.presets[preset]['target']]
@@ -69,7 +72,7 @@ class RnnData:
         x_train = _pad_x(x_train, n_sessions)
         x_test = _pad_x(x_test, n_sessions)
 
-        return x_train, x_test, y_train.values, y_test.values
+        return x_train, x_test, y_train.values, y_test.values, features
 
     def _initialise(self):
         df_0 = self.df_0 = pd.read_pickle(self.PATH+'rnn_df.pkl')
