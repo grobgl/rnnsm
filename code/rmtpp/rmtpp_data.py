@@ -89,9 +89,9 @@ class RmtppData:
         self.churned_cust = churned.index[churned].values
         self.num_sessions = self.df_0.groupby('customerId').customerId.count()
 
-        # encode devices
+        # encode devices (in range 1-..)
         self.deviceEncoder = LabelEncoder()
-        df_0['device_enc'] = self.deviceEncoder.fit_transform(df_0.device)
+        df_0['device_enc'] = self.deviceEncoder.fit_transform(df_0.device) + 1
 
         # add nextStartUserTimeHours
         df_0['nextStartUserTimeHours'] = df_0.startUserTimeHours + df_0.deltaNextHours
@@ -112,7 +112,7 @@ class RmtppData:
         self.test_df_scaled = test_df_scaled
 
         train_features = self.train_features = sorted(list(set(df_0.columns) - set(['customerId','startUserTime'])))
-        target_features = self.target_features = ['startUserTimeHours', 'deltaNextHours']
+        target_features = self.target_features = ['nextStartUserTimeHours', 'deltaNextHours']
 
         # storing feature/target combinations as features for quick access
         # format: predict/mainFeature
@@ -127,7 +127,7 @@ class RmtppData:
             'startUserTimeHours': {
                 'features': sorted(list(set(self.train_features) - \
                                         set(['deltaNextHours', 'churned', 'device_enc', 'device'] + self.devices))),
-                'target': 'startUserTimeHours' }}
+                'target': 'nextStartUserTimeHours' }}
 
         for preset in self.presets:
             self.presets[preset]['feature_indices'] = list(map(self.train_features.index, self.presets[preset]['features']))
