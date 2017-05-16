@@ -53,13 +53,10 @@ class Rmtpp:
             self.y_train = self.y_train.reshape(self.y_train.shape + (1,))
             self.y_test = self.y_test.reshape(self.y_test.shape + (1,))
 
-        # self.y_train = self.y_train.reshape((-1, n_sessions, 1))
-        # self.y_test = self.y_test.reshape((-1, n_sessions, 1))
-
     def load_best_weights(self):
         self.model.load_weights(self.best_model_cp_file)
 
-    def set_model(self, lr=100.):
+    def set_model(self, lr=10.):
         self.lr = lr
         len_seq = self.x_train.shape[1]
         n_devices = np.unique(self.x_train_devices).shape[0]
@@ -83,10 +80,12 @@ class Rmtpp:
 
         merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
         lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(merge_inputs)
+        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(temporal_masking)
 
         predictions = Dense(1, activation='relu', name='predictions')(lstm_output)
 
         model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
+        # model = Model(inputs=temporal_input, outputs=predictions)
         model.compile(loss="mean_squared_error", optimizer=Adam(lr=lr))
 
         self.model = model
@@ -108,6 +107,7 @@ class Rmtpp:
     def fit_model(self, initial_epoch=0):
         log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
         self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        # self.model.fit(self.x_train_temporal, self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rmtpp/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')

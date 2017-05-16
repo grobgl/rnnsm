@@ -24,7 +24,7 @@ def createChurnRnnDS():
     """
     Creates dataset using same time frames as churn DS, without summarizing sessions. Used for RNN models.
     """
-    df = pd.read_pickle('../../data/cleaned/stage1_obs_pred.pkl')
+    df = pd.read_pickle('../../data/cleaned/stage2_obs_pred.pkl')
 
     # only look at sessions in obs period
     df_obs = df[df.startUserTime < obsPeriod['end']]
@@ -46,19 +46,28 @@ def createChurnRnnDS():
     df['numInteractions'] = df.changeThumbnail + df.imageZoom + df.watchVideo + df.view360
 
     # set type for timestamp values
-    df['deltaNextHours'] = df.deltaNext / np.timedelta64(1,'h')
-    df['deltaPrevHours'] = df.deltaPrev / np.timedelta64(1,'h')
-    df.loc[df.deltaNextHours < 0, 'deltaNextHours'] = 0
+    # df['deltaNextHours'] = df.deltaNext / np.timedelta64(1,'h')
+    # df['deltaPrevHours'] = df.deltaPrev / np.timedelta64(1,'h')
+    df['deltaNextHours'] = -1
+    df.loc[~df.deltaNext.isnull(), 'deltaNextHours'] = df.loc[~df.deltaNext.isnull(), 'deltaNext'].apply(lambda x: x.days * 24)
+    df.loc[df.deltaNext.isnull(), 'deltaNextHours'] = pd.NaT
+    df['deltaPrevHours'] = -1
+    df.loc[~df.deltaPrev.isnull(), 'deltaPrevHours'] = df.loc[~df.deltaPrev.isnull(), 'deltaPrev'].apply(lambda x: x.days * 24)
+    df.loc[df.deltaPrev.isnull(), 'deltaPrevHours'] = pd.NaT
+
 
     # set deltaNextHours to time until end of observation window
     df['churned'] = (df.deltaNextHours.isnull() & (df.startUserTime < obsPeriod['end'])).astype('int')
-    df.loc[df.churned.astype('bool'), 'deltaNextHours'] = (predPeriod['end'] - df.startUserTime[df.churned.astype('bool')]) / np.timedelta64(1, 'h')
+    df.startUserDate = df.startUserDate.apply(pd.Timestamp)
+    df.loc[df.churned.astype('bool'), 'deltaNextHours'] = (predPeriod['end'] - df.startUserDate[df.churned.astype('bool')]) / np.timedelta64(1, 'h')
 
     # set deltaNextHours to 0 for sessions in prediction window
     df.loc[df.startUserTime >= predPeriod['start'], 'deltaNextHours'] = 0
 
     df.loc[df.deltaPrevHours < 0, 'deltaPrevHours'] = 0
     df.loc[df.deltaPrevHours.isnull(), 'deltaPrevHours'] = 0
+
+    return df
 
     # select features
     features = ['customerId', 'churned', 'deltaNextHours', 'deltaPrevHours', 'numInteractions',
