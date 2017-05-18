@@ -64,7 +64,7 @@ class Rmtpp:
     def load_best_weights(self):
         self.model.load_weights(self.best_model_cp_file)
 
-    def set_model(self, lr=.00001):
+    def set_model(self, lr=.001):
         self.lr = lr
         len_seq = self.x_train.shape[1]
         n_devices = np.unique(self.x_train_devices).shape[0]
@@ -95,7 +95,7 @@ class Rmtpp:
 
         bias_input = Input(shape=(1,), name='bias_input')
         # bias_w_t = Dense(1, activation = 'linear', name='bias_w_t', kernel_initializer=Zeros(), bias_initializer=Constant(.001), kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
-        bias_w = Dense(1, activation = 'linear', name='bias_w', kernel_initializer=Constant(1.), bias_initializer=Constant(1.), kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
+        bias_w = Dense(1, activation = 'linear', name='bias_w', kernel_initializer=Constant(1.), kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
 
         output = concatenate([predictions, bias_w])
 
@@ -138,7 +138,7 @@ def neg_log_likelihood(delta_t, output):
     :timings: vector of delta_t: [t_(j+1) - t_j]
     :output: rnn output = v_t * h_j + b_t
     """
-    w_t = 0.1
+    w_t = 0.01
     # w = 1000.
 
     # w_t = output[1]
