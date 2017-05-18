@@ -67,7 +67,9 @@ def createChurnRnnDS():
     df.loc[df.deltaPrevHours < 0, 'deltaPrevHours'] = 0
     df.loc[df.deltaPrevHours.isnull(), 'deltaPrevHours'] = 0
 
-    return df
+    df['deltaNextHours'] = pd.to_numeric(df.deltaNextHours)
+    df['deltaPrevHours'] = pd.to_numeric(df.deltaPrevHours)
+    # return df
 
     # select features
     features = ['customerId', 'churned', 'deltaNextHours', 'deltaPrevHours', 'numInteractions',
