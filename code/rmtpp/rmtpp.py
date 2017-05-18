@@ -157,8 +157,7 @@ def neg_log_likelihood(delta_t, output, mask=None):
            - (1/w)*K.exp(cur_state) \
            + (1/w)*K.exp(cur_state + w_t*(delta_t))
     res = K.mean(res)
-
-    return [res, res]
+    return res
 
     # if mask is not None:
     #     if K.ndim(y_pred) == K.ndim(mask):
