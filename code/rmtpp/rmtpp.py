@@ -7,7 +7,7 @@ from keras.models import Sequential, Model
 from keras.layers import Dense, Dropout, Activation, Input, Masking, concatenate, Embedding
 from keras.layers.recurrent import LSTM
 from keras.callbacks import Callback, LambdaCallback, TensorBoard, ReduceLROnPlateau, EarlyStopping, ModelCheckpoint
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop
 from keras.initializers import Constant, Zeros
 from keras.constraints import non_neg
 from keras import backend as K
@@ -102,7 +102,7 @@ class Rmtpp:
         # model = Model(inputs=temporal_input, outputs=predictions)
         model = Model(inputs=[device_input, temporal_input, behav_input, bias_input], outputs=output)
         # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
-        model.compile(loss=neg_log_likelihood, optimizer=Adam(lr=lr))
+        model.compile(loss=neg_log_likelihood, optimizer=RMSprop(lr=lr))
 
         self.model = model
         return model
