@@ -40,7 +40,8 @@ class RmtppData:
         x_train_unscaled, x_test_unscaled = self.x_train_unscaled, self.x_test_unscaled
         feature_indices = self.presets[preset]['feature_indices']
         features = self.presets[preset]['features']
-        target_index = self.presets[preset]['target_index']
+        target_indices = self.presets[preset]['target_indices']
+        targets = self.presets[preset]['target']
 
         if encode_devices:
             feature_indices = [self.deviceEncIndex] + feature_indices
@@ -49,39 +50,46 @@ class RmtppData:
             feature_indices = self.deviceIndices + feature_indices
             features = self.devices + features
 
-        y_train = y_train.apply(lambda x: x[:,target_index])
-        y_test = y_test.apply(lambda x: x[:,target_index])
-
+        y_train = y_train.apply(lambda x: x.T[target_indices].T)
+        y_test = y_test.apply(lambda x: x.T[target_indices].T)
         x_train = x_train.apply(lambda x: x.T[feature_indices].T)
         x_test = x_test.apply(lambda x: x.T[feature_indices].T)
+        x_train_unscaled = x_train_unscaled.apply(lambda x: x.T[feature_indices].T)
+        x_test_unscaled = x_test_unscaled.apply(lambda x: x.T[feature_indices].T)
 
         if not include_churned:
             x_train = x_train[~x_train.index.isin(self.churned_cust)]
-            y_train = y_train[~y_train.index.isin(self.churned_cust)]
             x_test = x_test[~x_test.index.isin(self.churned_cust)]
+            x_train_unscaled = x_train_unscaled[~x_train_unscaled.index.isin(self.churned_cust)]
+            x_test_unscaled = x_test_unscaled[~x_test_unscaled.index.isin(self.churned_cust)]
+            y_train = y_train[~y_train.index.isin(self.churned_cust)]
             y_test = y_test[~y_test.index.isin(self.churned_cust)]
 
         if min_n_sessions > 1:
             cust = self.num_sessions[self.num_sessions > min_n_sessions].index
             x_train = x_train[x_train.index.isin(cust)]
-            y_train = y_train[y_train.index.isin(cust)]
             x_test = x_test[x_test.index.isin(cust)]
+            x_train_unscaled = x_train_unscaled[x_train_unscaled.index.isin(cust)]
+            x_test_unscaled = x_test_unscaled[x_test_unscaled.index.isin(cust)]
+            y_train = y_train[y_train.index.isin(cust)]
             y_test = y_test[y_test.index.isin(cust)]
 
         if n_sessions == -1:
             n_sessions = self.num_sessions.max()
 
         if target_sequences:
-            y_train = _pad_y(y_train, n_sessions)
-            y_test = _pad_y(y_test, n_sessions)
+            y_train = _pad_x(y_train, n_sessions)
+            y_test = _pad_x(y_test, n_sessions)
         else:
-            y_train = y_train.apply(lambda x: x[-1]).values
-            y_test = y_test.apply(lambda x: x[-1]).values
+            y_train = np.array(y_train.apply(lambda x: x[-1]).tolist())
+            y_test = np.array(y_test.apply(lambda x: x[-1]).tolist())
 
         x_train = _pad_x(x_train, n_sessions)
         x_test = _pad_x(x_test, n_sessions)
+        x_train_unscaled = _pad_x(x_train_unscaled, n_sessions)
+        x_test_unscaled = _pad_x(x_test_unscaled, n_sessions)
 
-        return x_train, x_test, y_train, y_test, features
+        return x_train, x_test, x_train_unscaled, x_test_unscaled, y_train, y_test, features, targets
 
     def _initialise(self):
         df_0 = self.df_0 = pd.read_pickle('../../data/rnn/first/rnn_stage2_df.pkl')
@@ -130,23 +138,23 @@ class RmtppData:
             'deltaNextHours': {
                 'features': sorted(list(set(self.train_features) - \
                                         set(['deltaNextHours', 'startUserTimeDays', 'deltaNextDays', 'deltaPrevDays', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
-                'target': 'deltaNextHours' },
+                'target': ['nextStartUserTimeHours', 'deltaNextHours'] },
             'deltaNextDays': {
                 'features': sorted(list(set(self.train_features) - \
                                         set(['deltaNextHours', 'startUserTimeHours', 'deltaNextDays', 'deltaPrevHours', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
-                'target': 'deltaNextDays' },
+                'target': ['nextStartUserTimeDays', 'deltaNextDays'] },
             'nextStartUserTimeHours': {
                 'features': sorted(list(set(self.train_features) - \
                                         set(['deltaNextHours', 'startUserTimeDays', 'deltaNextDays', 'deltaPrevDays', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
-                'target': 'nextStartUserTimeHours' },
+                'target': ['nextStartUserTimeHours', 'deltaNextHours'] },
             'nextStartUserTimeDays': {
                 'features': sorted(list(set(self.train_features) - \
                                         set(['deltaNextHours', 'startUserTimeHours', 'deltaNextDays', 'deltaPrevHours', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
-                'target': 'nextStartUserTimeDays' }}
+                'target': ['nextStartUserTimeDays', 'deltaNextDays'] }}
 
         for preset in self.presets:
             self.presets[preset]['feature_indices'] = list(map(self.train_features.index, self.presets[preset]['features']))
-            self.presets[preset]['target_index'] = self.target_features.index(self.presets[preset]['target'])
+            self.presets[preset]['target_indices'] = list(map(self.target_features.index, self.presets[preset]['target']))
 
         # convert to array
         self.x_train, self.y_train = _df_to_xy_array(train_df_scaled, train_features, target_features)
