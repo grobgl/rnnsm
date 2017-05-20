@@ -97,12 +97,12 @@ class Rmtpp:
         len_temporal = self.x_train_temporal.shape[2]
         len_behav = self.x_train_behav.shape[2]
 
-        dense_neurons = 32
-        lstm_neurons = 32
+        dense_neurons = 64
+        lstm_neurons = 64
 
         # use embedding layer for devices
         device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
-        device_embedding = Embedding(output_dim=2, input_dim=n_devices,
+        device_embedding = Embedding(output_dim=4, input_dim=n_devices,
                                      input_length=len_seq, mask_zero=True)(device_input)
 
         # inputs for temporal and behavioural data
@@ -181,13 +181,15 @@ class Rmtpp:
             cur_states = pred[:,-1,0]
             # ws = pred[:,-1,1]
             t_js = self.test_starttimes[:,-1]
-            t_true = self.test_nextstarttime[:,-1]
+            # t_true = self.test_nextstarttime[:,-1]
+            t_true = self.y_test[:,-1,0]
         else:
             pred = self.model.predict([self.x_train_devices, self.x_train_temporal, self.x_train_behav])
             cur_states = pred[:,-1,0]
             # ws = pred[:,-1,1]
             t_js = self.train_starttimes[:,-1]
-            t_true = self.train_nextstarttime[:,-1]
+            # t_true = self.train_nextstarttime[:,-1]
+            t_true = self.y_train[:,-1,0]
 
         t_pred = pred_next_starttime_vec(cur_states, t_js)
 
@@ -197,7 +199,7 @@ class Rmtpp:
     def pred_next_starttime(self, cur_state, t_j):
         ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
         delta_ts = ts - t_j
-        samples = ts * self._pred_next_starttime(delta_ts, cur_state)
+        samples = delta_ts * self._pred_next_starttime(delta_ts, cur_state)
 
         return trapz(samples, ts)
 
