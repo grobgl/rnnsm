@@ -39,7 +39,7 @@ class Rmtpp:
         self.best_model_cp = ModelCheckpoint(self.best_model_cp_file, monitor="val_loss",
                                              save_best_only=True, save_weights_only=False)
 
-    def set_x_y(self, include_churned=False, min_n_sessions=20, n_sessions=20, preset='deltaNextDays'):
+    def set_x_y(self, include_churned=False, min_n_sessions=0, n_sessions=50, preset='deltaNextDays'):
         self.x_train, \
         self.x_test, \
         self.x_train_unscaled, \
@@ -197,7 +197,7 @@ class Rmtpp:
 
 
     def pred_next_starttime(self, cur_state, w, t_j):
-        ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
+        ts = np.arange(t_j, 800*self.time_scale, self.time_scale)
         delta_ts = ts - t_j
         samples = ts * self._pred_next_starttime(delta_ts, cur_state, w)
 
