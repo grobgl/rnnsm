@@ -25,7 +25,7 @@ np.random.seed(seed)
 
 class Rmtpp:
 
-    w_scale = 0.1
+    w_scale = 0.06
     time_scale = 0.1
 
     def __init__(self, name, run):
@@ -119,18 +119,16 @@ class Rmtpp:
 
         predictions = Dense(1, activation='linear')(lstm_output)
 
-        bias_input = Input(shape=(1,), name='bias_input')
+        # bias_input = Input(shape=(1,), name='bias_input')
         # bias_w_t = Dense(1, activation = 'linear', name='bias_w_t', kernel_initializer=Zeros(), bias_initializer=Constant(.001), kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
         # bias_input = Masking(mask_value=0.)(bias_input)
-        bias_w = Dense(1, activation = 'linear', kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
-        bias_w = RepeatVector(len_seq)(bias_w)
+        # bias_w = Dense(1, activation = 'linear', kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
+        # bias_w = RepeatVector(len_seq)(bias_w)
 
-        output = concatenate([predictions, bias_w])
+        # output = concatenate([predictions, bias_w])
 
-        # model = Model(inputs=temporal_input, outputs=predictions)
         # model = Model(inputs=[device_input, temporal_input, behav_input, bias_input], outputs=output)
-        # model = Model(inputs=[temporal_input, behav_input, bias_input], outputs=[predictions, bias_w])
-        model = Model(inputs=[device_input, temporal_input, behav_input, bias_input], outputs=output)
+        model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
 
         # model.compile(loss=neg_log_likelihood, optimizer=RMSprop(lr=lr))
         model.compile(loss=self.neg_log_likelihood, optimizer=RMSprop(lr=lr))
@@ -142,10 +140,8 @@ class Rmtpp:
 
     def fit_model(self, initial_epoch=0):
         log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
-        # self.model.fit([self.x_train_temporal, self.x_train_behav, self.x_train_bias], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        # self.model.fit([self.x_train_temporal, self.x_train_behav, self.x_train_bias], [self.y_train, np.ones((self.y_train.shape[0],1))], batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav, self.x_train_bias], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        # self.model.fit(self.x_train_temporal, self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        # self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav, self.x_train_bias], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rmtpp/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
@@ -162,9 +158,11 @@ class Rmtpp:
 
         # w_t = self.w_scale
         mask = K.batch_flatten(targets[:,:,1])
-        w = K.batch_flatten(output[:,:,1])
+        # w = K.batch_flatten(output[:,:,1])
+        w = self.w_scale
         w_t = w
-        cur_state = K.batch_flatten(output[:,:,0])
+        # cur_state = K.batch_flatten(output[:,:,0])
+        cur_state = K.batch_flatten(output)
         delta_t = K.batch_flatten(targets[:,:,0])
 
         res = -cur_state - w_t*delta_t \
@@ -179,34 +177,35 @@ class Rmtpp:
         pred_next_starttime_vec = np.vectorize(self.pred_next_starttime)
 
         if dataset=='test':
-            pred = self.model.predict([self.x_test_devices, self.x_test_temporal, self.x_test_behav, self.x_test_bias])
+            pred = self.model.predict([self.x_test_devices, self.x_test_temporal, self.x_test_behav])
             cur_states = pred[:,-1,0]
-            ws = pred[:,-1,1]
+            # ws = pred[:,-1,1]
             t_js = self.test_starttimes[:,-1]
             t_true = self.test_nextstarttime[:,-1]
         else:
-            pred = self.model.predict([self.x_train_devices, self.x_train_temporal, self.x_train_behav, self.x_train_bias])
+            pred = self.model.predict([self.x_train_devices, self.x_train_temporal, self.x_train_behav])
             cur_states = pred[:,-1,0]
-            ws = pred[:,-1,1]
+            # ws = pred[:,-1,1]
             t_js = self.train_starttimes[:,-1]
             t_true = self.train_nextstarttime[:,-1]
 
-        t_pred = pred_next_starttime_vec(cur_states, ws, t_js)
+        t_pred = pred_next_starttime_vec(cur_states, t_js)
 
         return np.sqrt(mean_squared_error(t_true/self.time_scale, t_pred/self.time_scale))
 
 
-    def pred_next_starttime(self, cur_state, w, t_j):
-        ts = np.arange(t_j, 800*self.time_scale, self.time_scale)
+    def pred_next_starttime(self, cur_state, t_j):
+        ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
         delta_ts = ts - t_j
-        samples = ts * self._pred_next_starttime(delta_ts, cur_state, w)
+        samples = ts * self._pred_next_starttime(delta_ts, cur_state)
 
         return trapz(samples, ts)
 
 
-    def _pred_next_starttime(self, delta_t, cur_state, w):
-        # w_t = self.w_scale
-        w_t = w
+    def _pred_next_starttime(self, delta_t, cur_state):
+        w_t = self.w_scale
+        w = self.w_scale
+        # w_t = w
         # w_t = 1
         return np.exp(-(-cur_state - w_t*delta_t \
                - (1/w)*np.exp(cur_state) \
