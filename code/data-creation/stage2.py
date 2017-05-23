@@ -68,6 +68,9 @@ def _combineDatesDate(group):
     group.imageZoom.values[0] = group.imageZoom.sum()
     group.watchVideo.values[0] = group.watchVideo.sum()
     group.view360.values[0] = group.view360.sum()
+    group.numberdivisions.values[0] = group.numberdivisions.max()
+    group.avgPrice[0] = group.loc[longestSessionIdx].avgPrice
+    group.viewonly[0] = group.viewonly.max()
 
     return group.head(1)
 

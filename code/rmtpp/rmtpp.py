@@ -20,16 +20,21 @@ from sklearn.metrics import mean_squared_error
 
 from rmtpp_data import *
 
+import sys
+sys.path.insert(0, '../utils')
+from plot_format import *
+from seaborn import apionly as sns
+
 seed = 42
 np.random.seed(seed)
 
 class Rmtpp:
 
-    w_scale = 0.06
+    w_scale = 1.
     time_scale = 0.1
 
     def __init__(self, name, run):
-        self.predict_sequence = True
+        self.predict_sequence = False
         self.data = RmtppData.instance()
         self.set_x_y()
         self.set_model()
@@ -130,8 +135,8 @@ class Rmtpp:
         # model = Model(inputs=[device_input, temporal_input, behav_input, bias_input], outputs=output)
         model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
 
-        # model.compile(loss=neg_log_likelihood, optimizer=RMSprop(lr=lr))
-        model.compile(loss=self.neg_log_likelihood, optimizer=RMSprop(lr=lr))
+        loss = self.neg_log_likelihood_seq if self.predict_sequence else self.neg_log_likelihood
+        model.compile(loss=loss, optimizer=RMSprop(lr=lr))
 
         self.model = model
         return model
@@ -156,6 +161,25 @@ class Rmtpp:
         :output: rnn output = v_t * h_j + b_t
         """
 
+        w = self.w_scale
+        w_t = w
+        cur_state = K.batch_flatten(output)
+        delta_t = K.batch_flatten(targets)
+
+        res = -cur_state - w_t*delta_t \
+               - (1/w)*K.exp(cur_state) \
+               + (1/w)*K.exp(cur_state + w_t*(delta_t))
+
+        # return res
+        return res
+
+    def neg_log_likelihood_seq(self, targets, output):
+        """ Loss function for RMTPP model
+
+        :targets: vector of: [t_(j+1) - t_j, mask]
+        :output: rnn output = v_t * h_j + b_t
+        """
+
         # w_t = self.w_scale
         mask = K.batch_flatten(targets[:,:,1])
         # w = K.batch_flatten(output[:,:,1])
@@ -172,45 +196,130 @@ class Rmtpp:
         # return res
         return res*mask
 
-
-    def get_rmse_days(self, last_only=False, dataset='test'):
-        pred_next_starttime_vec = np.vectorize(self.pred_next_starttime)
+    def get_predictions(self, dataset='test', include_recency=False):
+        if include_recency:
+            pred_next_starttime_vec = np.vectorize(self.pred_next_starttime_rec)
+        else:
+            pred_next_starttime_vec = np.vectorize(self.pred_next_starttime)
 
         if dataset=='test':
             pred = self.model.predict([self.x_test_devices, self.x_test_temporal, self.x_test_behav])
-            cur_states = pred[:,-1,0]
-            # ws = pred[:,-1,1]
+            cur_states = pred[:,-1].ravel()
             t_js = self.test_starttimes[:,-1]
-            # t_true = self.test_nextstarttime[:,-1]
-            t_true = self.y_test[:,-1,0]
+            if self.predict_sequence:
+                t_true = self.y_test[:,-1,0]
+            else:
+                t_true = self.y_test
         else:
             pred = self.model.predict([self.x_train_devices, self.x_train_temporal, self.x_train_behav])
-            cur_states = pred[:,-1,0]
-            # ws = pred[:,-1,1]
+            cur_states = pred[:,-1].ravel()
             t_js = self.train_starttimes[:,-1]
-            # t_true = self.train_nextstarttime[:,-1]
-            t_true = self.y_train[:,-1,0]
+            if self.predict_sequence:
+                t_true = self.y_train[:,-1,0]
+            else:
+                t_true = self.y_train
 
         t_pred = pred_next_starttime_vec(cur_states, t_js)
 
-        return np.sqrt(mean_squared_error(t_true/self.time_scale, t_pred/self.time_scale))
+        return t_pred/self.time_scale, t_true/self.time_scale
+
+
+    def get_rmse_days(self, dataset='test', include_recency=False):
+        t_pred, t_true = self.get_predictions(dataset, include_recency)
+
+        return np.sqrt(mean_squared_error(t_true, t_pred))
 
 
     def pred_next_starttime(self, cur_state, t_j):
         ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
         delta_ts = ts - t_j
-        samples = delta_ts * self._pred_next_starttime(delta_ts, cur_state)
+        samples = self._pt(delta_ts, cur_state)
+        # samples = delta_ts * self._pt(delta_ts, cur_state)
 
         return trapz(samples, ts)
 
 
-    def _pred_next_starttime(self, delta_t, cur_state):
+    def pred_next_starttime_rec(self, cur_state, t_j):
+        absence_time = 365*self.time_scale - t_j
+        s_ts = self._pt(absence_time, cur_state)
+
+        ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
+        delta_ts = ts - t_j
+        samples = self._pt(delta_ts, cur_state)
+        # return samples
+        # samples = delta_ts * self._pt(delta_ts, cur_state)
+
+        return (1/s_ts) * trapz(samples[ts>(365*self.time_scale)], ts[ts>(365*self.time_scale)]) + trapz(samples[ts<=(365*self.time_scale)], ts[ts<=(365*self.time_scale)])
+
+
+    def _pt(self, delta_t, cur_state):
         w_t = self.w_scale
         w = self.w_scale
         # w_t = w
         # w_t = 1
-        return np.exp(-(-cur_state - w_t*delta_t \
-               - (1/w)*np.exp(cur_state) \
-               + (1/w)*np.exp(cur_state + w_t*(delta_t))))
+        return delta_t * np.exp(-(-cur_state - w_t*delta_t \
+                                   - (1/w)*np.exp(cur_state) \
+                                   + (1/w)*np.exp(cur_state + w_t*(delta_t))))
+
+
+
+predPeriod = {
+    'start': pd.Timestamp('2016-02-01'),
+    'end': pd.Timestamp('2016-06-01')
+}
+obsPeriod = {
+    'start': pd.Timestamp('2015-02-01'),
+    'end': pd.Timestamp('2016-02-01')
+}
+predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
+hours_year = np.timedelta64(pd.datetime(2017,2,1) - pd.datetime(2016,2,1)) / np.timedelta64(1,'h')
+
+def showResidPlot_short_date(y_true, y_pred, true_ret_time_days, width=1, height=None):
+    df = pd.DataFrame()
+    df['predicted (days)'] = y_pred
+    df['actual (days)'] = y_true
+    df['daysInObs'] = true_ret_time_days
+    df['date'] = df['daysInObs'] * np.timedelta64(24,'h') + obsPeriod['start']
+    df['residual (days)'] = df['predicted (days)'] - df['actual (days)']
+
+    grid = sns.JointGrid('daysInObs', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,3000), ylim=(-110,110))
+    grid = grid.plot_marginals(sns.distplot, kde=False, color='k')#, shade=True)
+    grid = grid.plot_joint(plt.scatter, alpha=.1, s=6, lw=0)
+    grid.ax_joint.clear()
+
+    retUnc = grid.ax_joint.scatter(df['daysInObs'], df['residual (days)'], alpha=.1, s=6, lw=0, color='C0', label='Ret. user (uncens.)')
+
+    xDates = [pd.datetime(2016,i,1) for i in [2,4,6]]
+    xDatesHours = [(d - obsPeriod['start']).to_timedelta64()/np.timedelta64(24,'h') for d in xDates]
+    xDatesStr = [d.strftime('%Y-%m') for d in xDates]
+    grid.ax_joint.set_xticks(xDatesHours)
+    grid.ax_joint.set_xticklabels(xDatesStr)
+    grid.ax_joint.set_xlabel('actual return date')
+    grid.ax_joint.set_ylabel('residual (days)')
+
+    grid.ax_joint.set_ylim((-110,110))
+    plt.show()
+
+
+def showResidPlot_short_days(y_true, y_pred, true_ret_time_days, width=1, height=None):
+    df = pd.DataFrame()
+    df['predicted (days)'] = y_pred
+    df['actual (days)'] = y_true
+    df['daysInObs'] = true_ret_time_days
+    df['date'] = df['daysInObs'] * np.timedelta64(24,'h') + obsPeriod['start']
+    df['residual (days)'] = df['predicted (days)'] - df['actual (days)']
+
+    grid = sns.JointGrid('actual (days)', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,3000), ylim=(-110,110))
+    grid = grid.plot_marginals(sns.distplot, kde=False, color='k')#, shade=True)
+    grid = grid.plot_joint(plt.scatter, alpha=.1, s=6, lw=0)
+    grid.ax_joint.clear()
+
+    retUnc = grid.ax_joint.scatter(df['actual (days)'], df['residual (days)'], alpha=.1, s=6, lw=0, color='C0', label='Ret. user (uncens.)')
+
+    grid.ax_joint.set_xlabel('actual return time (days)')
+    grid.ax_joint.set_ylabel('residual (days)')
+    grid.ax_joint.set_ylim((-110,110))
+
+    plt.show()
 
 

@@ -1,3 +1,4 @@
+import pickle
 import os.path
 
 import numpy as np
@@ -10,7 +11,10 @@ from keras.callbacks import Callback, LambdaCallback, TensorBoard, ReduceLROnPla
 from keras.optimizers import Adam, RMSprop
 from keras import backend as K
 
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+from sklearn.gaussian_process.kernels import Matern
+from bayes_opt import BayesianOptimization
 
 import sys
 sys.path.insert(0, '../rmtpp')
@@ -23,12 +27,16 @@ from seaborn import apionly as sns
 seed = 42
 np.random.seed(seed)
 
+RESULT_PATH = '../../results/rnn/bayes_opt/'
+
 class Rnn:
 
-    def __init__(self, name, run):
+    def __init__(self, name, run, hidden_neurons=32, n_sessions=100):
         self.predict_sequence = False
+        self.hidden_neurons = hidden_neurons
+        self.n_sessions = n_sessions
         self.data = RmtppData.instance()
-        self.set_x_y()
+        self.set_x_y(n_sessions=n_sessions)
         self.set_model()
         self.name = name
         self.run = run
@@ -39,17 +47,24 @@ class Rnn:
     def set_x_y(self, include_churned=False, min_n_sessions=0, n_sessions=100, preset='deltaNextDays'):
         self.x_train_startTime, \
         self.x_test_startTime, \
+        self.x_train_startTime_unscaled, \
+        self.x_test_startTime_unscaled, \
         self.y_train_startTime, \
         self.y_test_startTime, \
-        features = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset='nextStartUserTimeDays', target_sequences=self.predict_sequence)
+        features, \
+        targets = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset='nextStartUserTimeDays', target_sequences=self.predict_sequence)
 
         self.x_train, \
         self.x_test, \
+        self.x_train_unscaled, \
+        self.x_test_unscaled, \
         self.y_train, \
         self.y_test, \
-        features = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset=preset, target_sequences=self.predict_sequence)
+        features, \
+        targets = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset=preset, target_sequences=self.predict_sequence)
 
         self.features = features
+        self.targets = targets
         temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevDays', 'startUserTimeDays']
         device_index = features.index('device')
         temporal_indices = list(map(features.index, temporal_features))
@@ -66,8 +81,10 @@ class Rnn:
             self.y_train = self.y_train.reshape(self.y_train.shape + (1,))
             self.y_test = self.y_test.reshape(self.y_test.shape + (1,))
 
-        self.y_train = self.y_train.astype('float32')
-        self.y_test = self.y_test.astype('float32')
+        self.y_train = self.y_train.T[1].T.astype('float32')
+        self.y_test = self.y_test.T[1].T.astype('float32')
+
+        self.x_train_train, self.x_train_val, self.y_train_train, self.y_train_val = train_test_split(self.x_train, self.y_train, test_size=.2, random_state=42)
 
     def load_best_weights(self):
         self.model.load_weights(self.best_model_cp_file)
@@ -76,31 +93,34 @@ class Rnn:
         self.lr = lr
         len_seq = self.x_train.shape[1]
         n_devices = np.unique(self.x_train_devices).shape[0]
+        n_feat = self.x_train.shape[2]
         len_temporal = self.x_train_temporal.shape[2]
         len_behav = self.x_train_behav.shape[2]
 
-        dense_neurons = 64
-        lstm_neurons = 64
+        lstm_neurons = self.hidden_neurons
 
         # use embedding layer for devices
-        device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
-        device_embedding = Embedding(output_dim=2, input_dim=n_devices,
-                                     input_length=len_seq, mask_zero=True)(device_input)
+        # device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
+        # device_embedding = Embedding(output_dim=2, input_dim=n_devices,
+        #                              input_length=len_seq, mask_zero=True)(device_input)
 
-        # inputs for temporal and behavioural data
-        temporal_input = Input(shape=(len_seq, len_temporal), name='temporal_input')
-        behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
+        # # inputs for temporal and behavioural data
+        # temporal_input = Input(shape=(len_seq, len_temporal), name='temporal_input')
+        # behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
 
-        temporal_masking = Masking(mask_value=0.)(temporal_input)
-        behav_masking = Masking(mask_value=0.)(behav_input)
+        # temporal_masking = Masking(mask_value=0.)(temporal_input)
+        # behav_masking = Masking(mask_value=0.)(behav_input)
 
-        merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
+        # merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
+        inputs = Input(shape=(len_seq, n_feat))
+        merge_inputs = Masking(mask_value=0.)(inputs)
 
         lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(merge_inputs)
 
         predictions = Dense(1, activation='relu', name='predictions')(lstm_output)
 
-        model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
+        # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
+        model = Model(inputs, outputs=predictions)
 
         model.compile(loss='mse', optimizer=RMSprop(lr=lr))
 
@@ -113,14 +133,45 @@ class Rnn:
         return rmse_days
 
     def fit_model(self, initial_epoch=0):
-        log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
-        self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        log_file = '{:02d}_{}_lr{}_inp{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr,self.x_train.shape[2], self.n_sessions, self.hidden_neurons)
+        # self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        # self.model.fit(self.x_train, self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit(self.x_train_train, self.y_train_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rnn_new/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
-                , self.best_model_cp
+                # , self.best_model_cp
                 ]
              )
+
+
+
+def runBayesOpt():
+    RESULT_PATH = '../../results/rnn/bayes_opt/'
+
+    bounds = {'hidden_neurons': (1, 100), 'n_sessions': (10,300)}
+    n_iter = 25
+
+    bOpt = BayesianOptimization(_evaluatePerformance, bounds)
+
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5, kernel=Matern())
+
+    with open(RESULT_PATH+'bayes_opt_rnn.pkl', 'wb') as handle:
+        pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return bOpt
+
+def _evaluatePerformance(hidden_neurons, n_sessions):
+    # def __init__(self, name, run, hidden_neurons=32, n_sessions=100):
+    K.clear_session()
+    hidden_neurons = np.floor(hidden_neurons).astype('int')
+    n_sessions = np.floor(n_sessions).astype('int')
+    model = Rnn('bayes_opt', 5, hidden_neurons, n_sessions)
+    model.fit_model()
+    pred = model.model.predict(model.x_train_val)
+    mse = mean_squared_error(pred, model.y_train_val)
+    return -mse
+
 
 predPeriod = {
     'start': pd.Timestamp('2016-02-01'),

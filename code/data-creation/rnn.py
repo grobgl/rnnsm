@@ -73,8 +73,7 @@ def createChurnRnnDS():
 
     # select features
     features = ['customerId', 'churned', 'deltaNextHours', 'deltaPrevHours', 'numInteractions',
-                'numberdivisions', 'avgPrice', 'viewonly', 'changeThumbnail',
-                'imageZoom', 'watchVideo', 'view360', 'device', 'sessionLengthSec',
+                'numberdivisions', 'avgPrice', 'viewonly', 'device', 'sessionLengthSec',
                 'hourOfDay', 'dayOfWeek', 'dayOfMonth']
 
     df_onehot = pt.dmatrix('+'.join(features)+'-1', df, return_type='dataframe', NA_action='raise')
