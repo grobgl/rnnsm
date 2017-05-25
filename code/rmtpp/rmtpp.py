@@ -83,8 +83,10 @@ class Rmtpp:
         self.x_train_train_unscaled = self.x_train_unscaled[train_train_i]
         self.x_train_val_unscaled = self.x_train_unscaled[train_val_i]
 
-        self.y_train_train = self.y_train.T[1].T.astype('float32')[train_train_i] * self.time_scale
-        self.y_train_val = self.y_train.T[1].T.astype('float32')[train_val_i] * self.time_scale
+        self.y_train_train = self.y_train.T[[1,2]].T.astype('float32')[train_train_i]
+        self.y_train_val = self.y_train.T[[1,2]].T.astype('float32')[train_val_i]
+        self.y_train_train[:,0] *= self.time_scale
+        self.y_train_val[:,0] *= self.time_scale
 
         self.y_train_train_churned = self.y_train_churned[train_train_i]
         self.y_train_val_churned = self.y_train_churned[train_val_i]
@@ -94,8 +96,10 @@ class Rmtpp:
         self.y_train_train_ret = self.y_train_train[~self.y_train_train_churned]
         self.y_train_val_ret = self.y_train_val[~self.y_train_val_churned]
 
-        self.y_train = self.y_train.T[1].T.astype('float32') * self.time_scale
-        self.y_test = self.y_test.T[1].T.astype('float32') * self.time_scale
+        self.y_train = self.y_train.T[[1,2]].T.astype('float32')
+        self.y_test = self.y_test.T[[1,2]].T.astype('float32')
+        self.y_train[:,0] *= self.time_scale
+        self.y_test[:,0] *= self.time_scale
 
         if self.predict_sequence:
             self.y_train_train = self.y_train_train.reshape(self.y_train_train.shape+(1,))
@@ -151,7 +155,8 @@ class Rmtpp:
         # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
         model = Model(inputs=[device_input, temporal_input], outputs=predictions)
 
-        loss = self.neg_log_likelihood_seq if self.predict_sequence else self.neg_log_likelihood
+        # loss = self.neg_log_likelihood_seq if self.predict_sequence else self.neg_log_likelihood
+        loss = self.neg_log_likelihood_cens
         model.compile(loss=loss, optimizer=RMSprop(lr=lr))
 
         self.model = model
@@ -163,7 +168,7 @@ class Rmtpp:
         log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
 
         # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices], self.x_train_train_ret[:,:,self.behav_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit([self.x_train_train[:,:,self.device_index], self.x_train_train[:,:,self.temporal_indices]], self.y_train_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rmtpp/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
@@ -189,6 +194,32 @@ class Rmtpp:
 
         # return res
         return res
+
+
+    def neg_log_likelihood_cens(self, targets, output):
+        """ Loss function for RMTPP model
+
+        :targets: vector of: [t_(j+1) - t_j, mask]
+        :output: rnn output = v_t * h_j + b_t
+        """
+        ret_mask = K.cast(K.equal(targets[:,1], 0), 'float32')
+        delta_t = targets[:,0]
+        w = self.w_scale
+        w_t = w
+
+        cur_state = K.batch_flatten(output)
+
+        ret_term = -cur_state - w_t*delta_t
+        ret_term = ret_mask * ret_term
+        common_term = -(1/w)*K.exp(cur_state) + (1/w)*K.exp(cur_state + w_t*(delta_t))
+
+        # res = -cur_state - w_t*delta_t \
+        #        - (1/w)*K.exp(cur_state) \
+        #        + (1/w)*K.exp(cur_state + w_t*(delta_t))
+
+        return ret_term + common_term
+        # return res
+
 
     def neg_log_likelihood_seq(self, targets, output):
         """ Loss function for RMTPP model
@@ -242,7 +273,7 @@ class Rmtpp:
 
         t_pred = pred_next_starttime_vec(cur_states, t_js)
 
-        return t_pred/self.time_scale, t_true/self.time_scale
+        return t_pred/self.time_scale, t_true[:,0]/self.time_scale
 
 
     # def get_rmse_days(self, dataset='val', include_recency=False):
