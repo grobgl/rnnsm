@@ -14,9 +14,14 @@ from keras.callbacks import Callback, LambdaCallback, TensorBoard, ReduceLROnPla
 from keras.optimizers import Adam, RMSprop
 from keras.initializers import Constant, Zeros
 from keras.constraints import non_neg
+from keras import regularizers
 from keras import backend as K
 
-from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
+from sklearn.metrics import mean_squared_error, accuracy_score, recall_score, roc_auc_score
+from lifelines.utils import concordance_index
+from sklearn.gaussian_process.kernels import Matern
+from bayes_opt import BayesianOptimization
 
 from rmtpp_data import *
 
@@ -30,11 +35,13 @@ np.random.seed(seed)
 
 class Rmtpp:
 
-    w_scale = 1.
-    time_scale = 0.1
+    w_scale = .5
+    time_scale = .1
 
-    def __init__(self, name, run):
+    def __init__(self, name, run, hidden_neurons=32, n_sessions=100):
         self.predict_sequence = False
+        self.hidden_neurons = hidden_neurons
+        self.n_sessions = n_sessions
         self.data = RmtppData.instance()
         self.set_x_y()
         self.set_model()
@@ -44,66 +51,73 @@ class Rmtpp:
         self.best_model_cp = ModelCheckpoint(self.best_model_cp_file, monitor="val_loss",
                                              save_best_only=True, save_weights_only=False)
 
-    def set_x_y(self, include_churned=False, min_n_sessions=0, n_sessions=50, preset='deltaNextDays'):
+    def set_x_y(self, include_churned=False, preset='deltaNextDays'):
         self.x_train, \
         self.x_test, \
         self.x_train_unscaled, \
         self.x_test_unscaled, \
         self.y_train, \
         self.y_test, \
-        features, \
-        target_features = self.data.get_xy(include_churned, min_n_sessions, n_sessions, preset=preset, target_sequences=self.predict_sequence)
-
-        self.features = features
-        temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevDays', 'startUserTimeDays']
-        device_index = features.index('device')
-        temporal_indices = list(map(features.index, temporal_features))
-        behav_indices = list(map(features.index, set(features) - set(temporal_features + ['device'])))
-        startTimeDaysIndex = features.index('startUserTimeDays')
-
-        self.x_train_devices = self.x_train[:,:,device_index]
-        self.x_train_temporal = self.x_train[:,:,temporal_indices]
-        self.x_train_behav = self.x_train[:,:,behav_indices]
-        self.x_train_bias = np.ones(self.x_train.shape[:1] + (1,))
-        self.x_train_mask = ~(self.x_train == 0).all(2)
-        self.train_starttimes = self.x_train_unscaled[:,:,startTimeDaysIndex] * self.time_scale
-
-        self.x_test_devices = self.x_test[:,:,device_index]
-        self.x_test_temporal = self.x_test[:,:,temporal_indices]
-        self.x_test_behav = self.x_test[:,:,behav_indices]
-        self.x_test_bias = np.ones(self.x_test.shape[:1] + (1,))
-        self.x_test_mask = ~(self.x_test == 0).all(2)
-        self.test_starttimes = self.x_test_unscaled[:,:,startTimeDaysIndex] * self.time_scale
-
-        self.y_train = self.y_train * self.time_scale
-        self.y_test = self.y_test * self.time_scale
-        self.train_nextstarttime = self.y_train.T[0].T
-        self.y_train = self.y_train.T[1].T
-        self.test_nextstarttime = self.y_test.T[0].T
-        self.y_test = self.y_test.T[1].T
+        self.features, \
+        self.targets = self.data.get_xy(min_n_sessions=0, n_sessions=self.n_sessions, preset=preset, target_sequences=self.predict_sequence, encode_devices=True)
 
         if self.predict_sequence:
-            self.y_train = self.y_train.reshape(self.y_train.shape + (1,))
-            self.y_test = self.y_test.reshape(self.y_test.shape + (1,))
-            self.y_train = np.append(self.y_train, self.x_train_mask.astype('float').reshape(self.x_train_mask.shape + (1,)), 2)
-            self.y_test = np.append(self.y_test, self.x_test_mask.astype('float').reshape(self.x_test_mask.shape + (1,)), 2)
+            self.y_train_churned = self.y_train[:,-1,self.targets.index('churned')].astype('bool')
+            self.y_test_churned = self.y_test[:,-1,self.targets.index('churned')].astype('bool')
+        else:
+            self.y_train_churned = self.y_train[:,self.targets.index('churned')].astype('bool')
+            self.y_test_churned = self.y_test[:,self.targets.index('churned')].astype('bool')
 
-        self.y_train = self.y_train.astype('float32')
-        self.y_test = self.y_test.astype('float32')
+        train_train_i, train_val_i = self.train_i, self.test_i = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.x_train, self.y_train_churned))
+
+        temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevDays', 'startUserTimeDays', 'sessionLengthSec']
+        self.device_index = self.features.index('device')
+        self.temporal_indices = list(map(self.features.index, temporal_features))
+        self.behav_indices = list(map(self.features.index, set(self.features) - set(temporal_features + ['device'])))
+        self.startTimeDaysIndex = self.features.index('startUserTimeDays')
+
+        # self.x_train = self.x_train[:,:,used_feature_indices]
+        # self.x_test = self.x_test[:,:,used_feature_indices]
+        self.x_train_train = self.x_train[train_train_i]
+        self.x_train_val = self.x_train[train_val_i]
+        self.x_train_train_unscaled = self.x_train_unscaled[train_train_i]
+        self.x_train_val_unscaled = self.x_train_unscaled[train_val_i]
+
+        self.y_train_train = self.y_train.T[1].T.astype('float32')[train_train_i] * self.time_scale
+        self.y_train_val = self.y_train.T[1].T.astype('float32')[train_val_i] * self.time_scale
+
+        self.y_train_train_churned = self.y_train_churned[train_train_i]
+        self.y_train_val_churned = self.y_train_churned[train_val_i]
+
+        self.x_train_train_ret = self.x_train_train[~self.y_train_train_churned]
+        self.x_train_val_ret = self.x_train_val[~self.y_train_val_churned]
+        self.y_train_train_ret = self.y_train_train[~self.y_train_train_churned]
+        self.y_train_val_ret = self.y_train_val[~self.y_train_val_churned]
+
+        self.y_train = self.y_train.T[1].T.astype('float32') * self.time_scale
+        self.y_test = self.y_test.T[1].T.astype('float32') * self.time_scale
+
+        if self.predict_sequence:
+            self.y_train_train = self.y_train_train.reshape(self.y_train_train.shape+(1,))
+            self.y_train_val = self.y_train_val.reshape(self.y_train_val.shape+(1,))
+            self.y_train_train_ret = self.y_train_train_ret.reshape(self.y_train_train_ret.shape+(1,))
+            self.y_train_val_ret = self.y_train_val_ret.reshape(self.y_train_val_ret.shape+(1,))
+            self.y_train = self.y_train.reshape(self.y_train.shape+(1,))
+            self.y_test = self.y_test.reshape(self.y_test.shape+(1,))
 
 
     def load_best_weights(self):
         self.model.load_weights(self.best_model_cp_file)
 
-    def set_model(self, lr=.001):
+
+    def set_model(self, lr=.01):
         self.lr = lr
         len_seq = self.x_train.shape[1]
-        n_devices = np.unique(self.x_train_devices).shape[0]
-        len_temporal = self.x_train_temporal.shape[2]
-        len_behav = self.x_train_behav.shape[2]
+        n_devices = np.unique(self.x_train[:,:,self.device_index]).shape[0]
+        len_temporal = len(self.temporal_indices)
+        len_behav = len(self.behav_indices)
 
-        dense_neurons = 64
-        lstm_neurons = 64
+        lstm_neurons = self.hidden_neurons
 
         # use embedding layer for devices
         device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
@@ -112,15 +126,16 @@ class Rmtpp:
 
         # inputs for temporal and behavioural data
         temporal_input = Input(shape=(len_seq, len_temporal), name='temporal_input')
-        behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
+        # behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
 
         temporal_masking = Masking(mask_value=0.)(temporal_input)
-        behav_masking = Masking(mask_value=0.)(behav_input)
+        # behav_masking = Masking(mask_value=0.)(behav_input)
 
-        merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
-        # merge_inputs = concatenate([temporal_masking, behav_masking])
+        # merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
+        merge_inputs = concatenate([device_embedding, temporal_masking])
 
-        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, recurrent_activation='relu')(merge_inputs)
+        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, recurrent_activation='relu')(merge_inputs)
+        lstm_output = LSTM(lstm_neurons, activation='relu', return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.02), activity_regularizer=regularizers.l2(0.02))(merge_inputs)
 
         predictions = Dense(1, activation='linear')(lstm_output)
 
@@ -133,7 +148,8 @@ class Rmtpp:
         # output = concatenate([predictions, bias_w])
 
         # model = Model(inputs=[device_input, temporal_input, behav_input, bias_input], outputs=output)
-        model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
+        # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
+        model = Model(inputs=[device_input, temporal_input], outputs=predictions)
 
         loss = self.neg_log_likelihood_seq if self.predict_sequence else self.neg_log_likelihood
         model.compile(loss=loss, optimizer=RMSprop(lr=lr))
@@ -145,8 +161,9 @@ class Rmtpp:
 
     def fit_model(self, initial_epoch=0):
         log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
-        # self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav, self.x_train_bias], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+
+        # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices], self.x_train_train_ret[:,:,self.behav_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rmtpp/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
@@ -196,38 +213,42 @@ class Rmtpp:
         # return res
         return res*mask
 
-    def get_predictions(self, dataset='test', include_recency=False):
+    def get_predictions(self, dataset='val', include_recency=False):
         if include_recency:
             pred_next_starttime_vec = np.vectorize(self.pred_next_starttime_rec)
         else:
             pred_next_starttime_vec = np.vectorize(self.pred_next_starttime)
 
         if dataset=='test':
-            pred = self.model.predict([self.x_test_devices, self.x_test_temporal, self.x_test_behav])
-            cur_states = pred[:,-1].ravel()
-            t_js = self.test_starttimes[:,-1]
-            if self.predict_sequence:
-                t_true = self.y_test[:,-1,0]
-            else:
-                t_true = self.y_test
+            x = [self.x_test[:,:,self.device_index],
+                 self.x_test[:,:,self.temporal_indices]]
+                 # self.x_test[:,:,self.behav_indices]]
+            t_js = self.x_test_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
+            y = self.y_test
         else:
-            pred = self.model.predict([self.x_train_devices, self.x_train_temporal, self.x_train_behav])
-            cur_states = pred[:,-1].ravel()
-            t_js = self.train_starttimes[:,-1]
-            if self.predict_sequence:
-                t_true = self.y_train[:,-1,0]
-            else:
-                t_true = self.y_train
+            x = [self.x_train_val[:,:,self.device_index],
+                 self.x_train_val[:,:,self.temporal_indices]]
+                 # self.x_train_val[:,:,self.behav_indices]]
+            t_js = self.x_train_val_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
+            y = self.y_train_val
+
+        pred = self.model.predict(x)
+        cur_states = pred[:,-1].ravel()
+
+        if self.predict_sequence:
+            t_true = y[:,-1,0]
+        else:
+            t_true = y
 
         t_pred = pred_next_starttime_vec(cur_states, t_js)
 
         return t_pred/self.time_scale, t_true/self.time_scale
 
 
-    def get_rmse_days(self, dataset='test', include_recency=False):
-        t_pred, t_true = self.get_predictions(dataset, include_recency)
+    # def get_rmse_days(self, dataset='val', include_recency=False):
+    #     t_pred, t_true = self.get_predictions(dataset, include_recency)
 
-        return np.sqrt(mean_squared_error(t_true, t_pred))
+    #     return np.sqrt(mean_squared_error(t_true, t_pred))
 
 
     def pred_next_starttime(self, cur_state, t_j):
@@ -261,6 +282,52 @@ class Rmtpp:
                                    - (1/w)*np.exp(cur_state) \
                                    + (1/w)*np.exp(cur_state + w_t*(delta_t))))
 
+    def get_scores(self, dataset='val', include_recency=False):
+        if dataset=='val':
+            churned = self.y_train_val_churned
+        else:
+            churned = self.y_test_churned
+
+        pred_0, y_0 = self.get_predictions(dataset, include_recency)
+
+        if self.predict_sequence:
+            mask = y_0 != 0
+            churned_mask = mask[~churned]
+            pred_last = pred_0[:,-1].ravel()
+            y_last = y_0[:,-1].ravel()
+        else:
+            pred_last = pred_0.ravel()
+            y_last = y_0.ravel()
+
+        # return pred_0, mask
+        rmse_days = np.sqrt(mean_squared_error(pred_last[~churned], y_last[~churned]))
+
+        if self.predict_sequence:
+            rmse_days_all = np.sqrt(mean_squared_error(pred_0[~churned][churned_mask].ravel(), y_0[~churned][churned_mask].ravel()))
+        else:
+            rmse_days_all = 0
+
+        rtd_ind = self.features.index('startUserTimeDays')
+        ret_time_days_pred = self.x_train_val_unscaled[:,-1,rtd_ind] + pred_last
+        ret_time_days_true = self.x_train_val_unscaled[:,-1,rtd_ind] + y_last
+
+        churned_pred = ret_time_days_pred >= churn_days
+        churned_true = ret_time_days_true >= churn_days
+
+        churn_acc = accuracy_score(churned_true, churned_pred)
+        churn_recall = recall_score(churned_true, churned_pred)
+        churn_auc = roc_auc_score(churned_true, pred_last)
+
+        concordance = concordance_index(y_last, pred_last, ~churned)
+
+        return {'rmse_days': rmse_days,
+                'rmse_days_all': rmse_days_all,
+                'churn_acc': churn_acc,
+                'churn_auc': churn_auc,
+                'churn_recall': churn_recall,
+                'concordance': concordance}
+
+
 
 
 predPeriod = {
@@ -273,6 +340,8 @@ obsPeriod = {
 }
 predPeriodHours = (predPeriod['end'] - predPeriod['start']) / np.timedelta64(1, 'h')
 hours_year = np.timedelta64(pd.datetime(2017,2,1) - pd.datetime(2016,2,1)) / np.timedelta64(1,'h')
+churn_days = (predPeriod['end'] - obsPeriod['start']) / np.timedelta64(24, 'h')
+
 
 def showResidPlot_short_date(y_true, y_pred, true_ret_time_days, width=1, height=None):
     df = pd.DataFrame()
