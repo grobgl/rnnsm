@@ -80,7 +80,7 @@ class Rnn:
         device_indices = [i for i,f in enumerate(self.features) if f.startswith('device')]
         temporal_indices = list(map(self.features.index, temporal_features))
         # behav_indices = list(map(self.features.index, set(self.features) - set(temporal_features + ['device'])))
-        used_feature_indices = device_indices + temporal_indices
+        used_feature_indices = list(range(len(self.features)))#device_indices + temporal_indices
 
         # self.x_train_devices = self.x_train[:,:,device_index]
         # self.x_train_temporal = self.x_train[:,:,temporal_indices]
@@ -152,8 +152,8 @@ class Rnn:
         inputs = Input(shape=(len_seq, n_feat))
         merge_inputs = Masking(mask_value=0.)(inputs)
 
-        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(merge_inputs)
-        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l2(0.05))(merge_inputs)
+        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(merge_inputs)
+        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l2(0.05))(merge_inputs)
         # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, dropout=.2)(lstm_output)
 
         predictions = Dense(1, activation='relu', name='predictions')(lstm_output)
@@ -233,7 +233,7 @@ class Rnn:
         log_file = '{:02d}_{}_lr{}_inp{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr,self.x_train.shape[2], self.n_sessions, self.hidden_neurons)
         # self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
         # self.model.fit(self.x_train, self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit(self.x_train_train_ret, self.y_train_train_ret, batch_size=1000, epochs=1000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit(self.x_train_train_ret, self.y_train_train_ret, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rnn_new/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
@@ -246,14 +246,14 @@ class Rnn:
 def runBayesOpt():
     RESULT_PATH = '../../results/rnn/bayes_opt/'
 
-    bounds = {'hidden_neurons': (1, 100), 'n_sessions': (10,300)}
-    n_iter = 25
+    bounds = {'hidden_neurons': (1, 20), 'n_sessions': (1,150)}
+    n_iter = 30
 
     bOpt = BayesianOptimization(_evaluatePerformance, bounds)
 
-    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=5, kernel=Matern())
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
 
-    with open(RESULT_PATH+'bayes_opt_rnn.pkl', 'wb') as handle:
+    with open(RESULT_PATH+'bayes_opt_rnn_new.pkl', 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
@@ -263,11 +263,11 @@ def _evaluatePerformance(hidden_neurons, n_sessions):
     K.clear_session()
     hidden_neurons = np.floor(hidden_neurons).astype('int')
     n_sessions = np.floor(n_sessions).astype('int')
-    model = Rnn('bayes_opt', 5, hidden_neurons, n_sessions)
+    model = Rnn('bayes_opt', 36, hidden_neurons, n_sessions)
     model.fit_model()
     model.load_best_weights()
-    pred = model.model.predict(model.x_train_val)
-    mse = mean_squared_error(pred, model.y_train_val)
+    pred = model.model.predict(model.x_train_val_ret)
+    mse = mean_squared_error(pred, model.y_train_val_ret)
     return -mse
 
 

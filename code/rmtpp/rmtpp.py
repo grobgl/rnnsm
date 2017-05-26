@@ -13,7 +13,7 @@ from keras.layers.recurrent import LSTM
 from keras.callbacks import Callback, LambdaCallback, TensorBoard, ReduceLROnPlateau, EarlyStopping, ModelCheckpoint
 from keras.optimizers import Adam, RMSprop
 from keras.initializers import Constant, Zeros
-from keras.constraints import non_neg
+from keras.constraints import non_neg, unit_norm
 from keras import regularizers
 from keras import backend as K
 
@@ -35,7 +35,7 @@ np.random.seed(seed)
 
 class Rmtpp:
 
-    w_scale = .5
+    w_scale = .1
     time_scale = .1
 
     def __init__(self, name, run, hidden_neurons=32, n_sessions=100):
@@ -47,7 +47,7 @@ class Rmtpp:
         self.set_model()
         self.name = name
         self.run = run
-        self.best_model_cp_file = '../../results/rmtpp/{:02d}_{}.hdf5'.format(run, name)
+        self.best_model_cp_file = '../../results/rmtpp_new/{:02d}_{}.hdf5'.format(run, name)
         self.best_model_cp = ModelCheckpoint(self.best_model_cp_file, monitor="val_loss",
                                              save_best_only=True, save_weights_only=False)
 
@@ -139,7 +139,8 @@ class Rmtpp:
         merge_inputs = concatenate([device_embedding, temporal_masking])
 
         # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, recurrent_activation='relu')(merge_inputs)
-        lstm_output = LSTM(lstm_neurons, activation='relu', return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.02), activity_regularizer=regularizers.l2(0.02))(merge_inputs)
+        # lstm_output = LSTM(lstm_neurons, activation='relu', return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.02), activity_regularizer=regularizers.l2(0.02))(merge_inputs)
+        lstm_output = LSTM(lstm_neurons, activation='relu', return_sequences=self.predict_sequence, kernel_constraint=unit_norm())(merge_inputs)
 
         predictions = Dense(1, activation='linear')(lstm_output)
 
@@ -165,12 +166,14 @@ class Rmtpp:
         # maskingLayer = Masking(mask_value=0., input_shape=input_shape)(inputs)
 
     def fit_model(self, initial_epoch=0):
+        log_file = '{:02d}_{}_lr{}_wsc{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr, self.w_scale, self.n_sessions, self.hidden_neurons)
         log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
 
         # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices], self.x_train_train_ret[:,:,self.behav_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
         self.model.fit([self.x_train_train[:,:,self.device_index], self.x_train_train[:,:,self.temporal_indices]], self.y_train_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
-                TensorBoard(log_dir='../../logs/rmtpp/{}'.format(log_file), histogram_freq=100)
+                TensorBoard(log_dir='../../logs/rmtpp_new/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
                 , self.best_model_cp
                 ]
@@ -202,8 +205,8 @@ class Rmtpp:
         :targets: vector of: [t_(j+1) - t_j, mask]
         :output: rnn output = v_t * h_j + b_t
         """
-        ret_mask = K.cast(K.equal(targets[:,1], 0), 'float32')
-        delta_t = targets[:,0]
+        ret_mask = K.batch_flatten(K.cast(K.equal(targets[:,1], 0), 'float32'))
+        delta_t = K.batch_flatten(targets[:,0])
         w = self.w_scale
         w_t = w
 
@@ -382,7 +385,7 @@ def showResidPlot_short_date(y_true, y_pred, true_ret_time_days, width=1, height
     df['date'] = df['daysInObs'] * np.timedelta64(24,'h') + obsPeriod['start']
     df['residual (days)'] = df['predicted (days)'] - df['actual (days)']
 
-    grid = sns.JointGrid('daysInObs', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,3000), ylim=(-110,110))
+    grid = sns.JointGrid('daysInObs', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,3000), ylim=(-200,200))
     grid = grid.plot_marginals(sns.distplot, kde=False, color='k')#, shade=True)
     grid = grid.plot_joint(plt.scatter, alpha=.1, s=6, lw=0)
     grid.ax_joint.clear()
@@ -397,7 +400,7 @@ def showResidPlot_short_date(y_true, y_pred, true_ret_time_days, width=1, height
     grid.ax_joint.set_xlabel('actual return date')
     grid.ax_joint.set_ylabel('residual (days)')
 
-    grid.ax_joint.set_ylim((-110,110))
+    grid.ax_joint.set_ylim((-200,200))
     plt.show()
 
 
@@ -409,7 +412,7 @@ def showResidPlot_short_days(y_true, y_pred, true_ret_time_days, width=1, height
     df['date'] = df['daysInObs'] * np.timedelta64(24,'h') + obsPeriod['start']
     df['residual (days)'] = df['predicted (days)'] - df['actual (days)']
 
-    grid = sns.JointGrid('actual (days)', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,3000), ylim=(-110,110))
+    grid = sns.JointGrid('actual (days)', 'residual (days)', data=df, size=figsize(.5,.5)[0], xlim=(0,3000), ylim=(-200,200))
     grid = grid.plot_marginals(sns.distplot, kde=False, color='k')#, shade=True)
     grid = grid.plot_joint(plt.scatter, alpha=.1, s=6, lw=0)
     grid.ax_joint.clear()
@@ -418,7 +421,7 @@ def showResidPlot_short_days(y_true, y_pred, true_ret_time_days, width=1, height
 
     grid.ax_joint.set_xlabel('actual return time (days)')
     grid.ax_joint.set_ylabel('residual (days)')
-    grid.ax_joint.set_ylim((-110,110))
+    grid.ax_joint.set_ylim((-200,200))
 
     plt.show()
 
