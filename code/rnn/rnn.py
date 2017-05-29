@@ -9,6 +9,7 @@ from keras.layers import Dense, Dropout, Activation, Input, Masking, concatenate
 from keras.layers.recurrent import LSTM
 from keras.callbacks import Callback, LambdaCallback, TensorBoard, ReduceLROnPlateau, EarlyStopping, ModelCheckpoint
 from keras.optimizers import Adam, RMSprop
+from keras.constraints import unit_norm, max_norm
 from keras import regularizers
 from keras import backend as K
 
@@ -152,11 +153,12 @@ class Rnn:
         inputs = Input(shape=(len_seq, n_feat))
         merge_inputs = Masking(mask_value=0.)(inputs)
 
-        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(merge_inputs)
-        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l2(0.05))(merge_inputs)
-        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, dropout=.2)(lstm_output)
+        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.05))(merge_inputs)
+        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_constraint=max_norm())(merge_inputs)
 
-        predictions = Dense(1, activation='relu', name='predictions')(lstm_output)
+
+        # predictions = Dense(1, activation='relu', name='predictions', kernel_constraint=max_norm())(lstm_output)
+        predictions = Dense(1, activation='relu', name='predictions', kernel_regularizer=regularizers.l2(0.05))(lstm_output)
 
         # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
         model = Model(inputs, outputs=predictions)
@@ -251,9 +253,9 @@ def runBayesOpt():
 
     bOpt = BayesianOptimization(_evaluatePerformance, bounds)
 
-    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=6, kernel=Matern())
 
-    with open(RESULT_PATH+'bayes_opt_rnn_new.pkl', 'wb') as handle:
+    with open(RESULT_PATH+'bayes_opt_rnn_new_new.pkl', 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
@@ -263,7 +265,7 @@ def _evaluatePerformance(hidden_neurons, n_sessions):
     K.clear_session()
     hidden_neurons = np.floor(hidden_neurons).astype('int')
     n_sessions = np.floor(n_sessions).astype('int')
-    model = Rnn('bayes_opt', 36, hidden_neurons, n_sessions)
+    model = Rnn('bayes_opt', 45, hidden_neurons, n_sessions)
     model.fit_model()
     model.load_best_weights()
     pred = model.model.predict(model.x_train_val_ret)

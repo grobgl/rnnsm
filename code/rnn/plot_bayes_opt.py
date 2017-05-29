@@ -23,42 +23,42 @@ res = [(958.60321, 73.4674, 118.6166),
 res = {'X': [(x[2], x[1]) for x in res], 'Y': [x[0] for x in res]}
 
 
-def posterior(bo, res, grid):
+# def posterior(bo, res, grid):
+def posterior(bo, grid):
     # xmin, xmax = 0, 5000
     # bo.gp.fit(bo.X[:steps], bo.Y[:steps])
-    bo.gp.fit(res['X'], res['Y'])
+    # bo.gp.fit(res['X'], res['Y'])
+    bo.gp.fit(bo.X, bo.Y)
     mu, sigma = bo.gp.predict(grid, return_std=True)
     return mu, sigma
 
-def plot_gp(width=1, height=None):
-    bounds = {'hidden_neurons': (1, 100), 'n_sessions': (10,300)}
-    bo = BayesianOptimization(lambda x: 0, bounds)
-    # bo = pickle.load(open(model.RESULT_PATH+'bayes_opt{}.pkl'.format(opt), 'rb'))
+def plot_gp(steps=32, width=1, height=None):
+    # bo = BayesianOptimization(lambda x: 0, bounds)
+    bo = pickle.load(open('../../results/rnn/bayes_opt/bayes_opt_rnn_new.pkl', 'rb'))
+    bo.X = bo.X[:,[1,0]][:steps]
+    bo.Y = -bo.Y[:steps]
 
-    x = np.arange(1, 301)
-    y = np.arange(1, 101)
+    x = np.arange(1, 151)
+    y = np.arange(1, 26)
     grid = [(i,j) for j in y for i in x]
 
     fig, ax = newfig(width, height)
 
-    mu, sigma = posterior(bo, res, grid)
+    # mu, sigma = posterior(bo, res, grid)
+    mu, sigma = posterior(bo, grid)
+    # return x,y,mu,grid
 
-    cs = ax.contourf(x,y,mu.reshape((100,300)), 20)
+    cs = ax.contourf(x,y,mu.reshape((25,150)), np.geomspace(750, 2550, 20))
 
-    samples_x = [x[0] for x in res['X']]
-    samples_y = [x[1] for x in res['X']]
+    # samples_x = [x[0] for x in res['X']]
+    # samples_y = [x[1] for x in res['X']]
+    samples_x = [x[0] for x in bo.X]
+    samples_y = [x[1] for x in bo.X]
     sc = ax.scatter(samples_x, samples_y, label='Samples', color='C3', s=5)
     # ax.plot(bo.X[:steps].flatten(), bo.Y[:steps], 'D', markersize=8, label=u'Observations', color='r')
     # ax.plot(x, mu, '--', color='k', label='Prediction')
-
-    # ax.fill(np.concatenate([x, x[::-1]]),
-    #           np.concatenate([mu - 1.9600 * sigma, (mu + 1.9600 * sigma)[::-1]]),
-    #     alpha=.2, fc='black', ec='None', label=r'95\% confidence interval')
-
-    ax.set_xlim((1, 300))
-    ax.set_ylim((1, 100))
-    # ax.set_ylabel(r'Concordance')
-    # ax.set_xlabel(r'Penalizer')
+    ax.set_xlim((1, 150))
+    ax.set_ylim((1, 25))
 
     ax.set_xlabel('Number of active days')
     ax.set_ylabel('Number of LSTM cells')
@@ -69,35 +69,33 @@ def plot_gp(width=1, height=None):
     fig.tight_layout()
     fig.show()
 
-def plot_gp_var(width=1, height=None):
-    bounds = {'hidden_neurons': (1, 100), 'n_sessions': (10,300)}
-    bo = BayesianOptimization(lambda x: 0, bounds)
-    # bo = pickle.load(open(model.RESULT_PATH+'bayes_opt{}.pkl'.format(opt), 'rb'))
+def plot_gp_var(steps=32, width=1, height=None):
+    # bo = BayesianOptimization(lambda x: 0, bounds)
+    bo = pickle.load(open('../../results/rnn/bayes_opt/bayes_opt_rnn_new.pkl', 'rb'))
+    bo.X = bo.X[:,[1,0]][:steps]
+    bo.Y = -bo.Y[:steps]
 
-    x = np.arange(1, 301)
-    y = np.arange(1, 101)
+    x = np.arange(1, 151)
+    y = np.arange(1, 26)
     grid = [(i,j) for j in y for i in x]
 
     fig, ax = newfig(width, height)
 
-    mu, sigma = posterior(bo, res, grid)
+    # mu, sigma = posterior(bo, res, grid)
+    mu, sigma = posterior(bo, grid)
+    # return x,y,mu,grid
 
-    cs = ax.contourf(x,y,sigma.reshape((100,300)), 20)
+    cs = ax.contourf(x,y,sigma.reshape((25,150)), 20)
 
-    samples_x = [x[0] for x in res['X']]
-    samples_y = [x[1] for x in res['X']]
+    # samples_x = [x[0] for x in res['X']]
+    # samples_y = [x[1] for x in res['X']]
+    samples_x = [x[0] for x in bo.X]
+    samples_y = [x[1] for x in bo.X]
     sc = ax.scatter(samples_x, samples_y, label='Samples', color='C3', s=5)
     # ax.plot(bo.X[:steps].flatten(), bo.Y[:steps], 'D', markersize=8, label=u'Observations', color='r')
     # ax.plot(x, mu, '--', color='k', label='Prediction')
-
-    # ax.fill(np.concatenate([x, x[::-1]]),
-    #           np.concatenate([mu - 1.9600 * sigma, (mu + 1.9600 * sigma)[::-1]]),
-    #     alpha=.2, fc='black', ec='None', label=r'95\% confidence interval')
-
-    ax.set_xlim((1, 300))
-    ax.set_ylim((1, 100))
-    # ax.set_ylabel(r'Concordance')
-    # ax.set_xlabel(r'Penalizer')
+    ax.set_xlim((1, 150))
+    ax.set_ylim((1, 25))
 
     ax.set_xlabel('Number of active days')
     ax.set_ylabel('Number of LSTM cells')

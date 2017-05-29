@@ -167,7 +167,7 @@ class Rmtpp:
 
     def fit_model(self, initial_epoch=0):
         log_file = '{:02d}_{}_lr{}_wsc{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr, self.w_scale, self.n_sessions, self.hidden_neurons)
-        log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
+        # log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
 
         # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices], self.x_train_train_ret[:,:,self.behav_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
         # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
