@@ -64,7 +64,7 @@ class Rnn:
         self.y_train, \
         self.y_test, \
         self.features, \
-        self.targets = self.data.get_xy(min_n_sessions=min_n_sessions, n_sessions=n_sessions, preset=preset, target_sequences=self.predict_sequence, encode_devices=False)
+        self.targets = self.data.get_xy(min_n_sessions=min_n_sessions, n_sessions=n_sessions, preset=preset, target_sequences=self.predict_sequence, encode_devices=True)
 
         if self.predict_sequence:
             self.y_train_churned = self.y_train[:,-1,self.targets.index('churned')].astype('bool')
@@ -75,12 +75,13 @@ class Rnn:
 
         train_train_i, train_val_i = self.train_i, self.test_i = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.x_train, self.y_train_churned))
 
-        # temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevDays', 'startUserTimeDays', 'sessionLengthSec']
-        temporal_features = ['deltaPrevDays', 'startUserTimeDays', 'sessionLengthSec']
+        temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevDays', 'startUserTimeDays', 'sessionLengthSec']
+        # temporal_features = ['deltaPrevDays', 'startUserTimeDays', 'sessionLengthSec']
         # device_index = self.features.index('device')
-        device_indices = [i for i,f in enumerate(self.features) if f.startswith('device')]
-        temporal_indices = list(map(self.features.index, temporal_features))
-        # behav_indices = list(map(self.features.index, set(self.features) - set(temporal_features + ['device'])))
+        self.device_indices = [i for i,f in enumerate(self.features) if f.startswith('device')]
+        self.temporal_indices = list(map(self.features.index, temporal_features))
+        self.behav_indices = list(map(self.features.index, set(self.features) - set(temporal_features + ['device'])))
+        # used_feature_indices = device_indices + temporal_indices
         used_feature_indices = list(range(len(self.features)))#device_indices + temporal_indices
 
         # self.x_train_devices = self.x_train[:,:,device_index]
@@ -130,38 +131,42 @@ class Rnn:
     def set_model(self, lr=0.01):
         self.lr = lr
         len_seq = self.x_train.shape[1]
-        # n_devices = np.unique(self.x_train_devices).shape[0]
+        n_devices = self.x_train[:,:,self.device_indices].max() + 1
         n_feat = self.x_train.shape[2]
+        len_temporal = len(self.temporal_indices)
+        len_behav = len(self.behav_indices)
         # len_temporal = self.x_train_temporal.shape[2]
         # len_behav = self.x_train_behav.shape[2]
 
         lstm_neurons = self.hidden_neurons
 
         # use embedding layer for devices
-        # device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
-        # device_embedding = Embedding(output_dim=2, input_dim=n_devices,
-        #                              input_length=len_seq, mask_zero=True)(device_input)
+        device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
+        device_embedding = Embedding(output_dim=2, input_dim=n_devices,
+                                     input_length=len_seq, mask_zero=True, embeddings_regularizer=regularizers.l2(0.035))(device_input)
 
         # # inputs for temporal and behavioural data
-        # temporal_input = Input(shape=(len_seq, len_temporal), name='temporal_input')
-        # behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
+        temporal_input = Input(shape=(len_seq, len_temporal), name='temporal_input')
+        behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
 
-        # temporal_masking = Masking(mask_value=0.)(temporal_input)
-        # behav_masking = Masking(mask_value=0.)(behav_input)
+        temporal_masking = Masking(mask_value=0.)(temporal_input)
+        behav_masking = Masking(mask_value=0.)(behav_input)
 
-        # merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
-        inputs = Input(shape=(len_seq, n_feat))
-        merge_inputs = Masking(mask_value=0.)(inputs)
+        merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
+        # inputs = Input(shape=(len_seq, n_feat))
+        # merge_inputs = Masking(mask_value=0.)(inputs)
 
-        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.05))(merge_inputs)
         # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_constraint=max_norm())(merge_inputs)
+        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence)(merge_inputs)
+        lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.035))(merge_inputs)
 
 
         # predictions = Dense(1, activation='relu', name='predictions', kernel_constraint=max_norm())(lstm_output)
-        predictions = Dense(1, activation='relu', name='predictions', kernel_regularizer=regularizers.l2(0.05))(lstm_output)
+        # predictions = Dense(1, activation='relu', name='predictions')(lstm_output)
+        predictions = Dense(1, activation='relu', name='predictions', kernel_regularizer=regularizers.l2(0.035))(lstm_output)
 
-        # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
-        model = Model(inputs, outputs=predictions)
+        model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
+        # model = Model(inputs, outputs=predictions)
 
         # model.compile(loss=self.weighted_mean_squared_error, optimizer=RMSprop(lr=lr))
         model.compile(loss='mse', optimizer=RMSprop(lr=lr))
@@ -171,12 +176,16 @@ class Rnn:
         return model
 
     def weighted_mean_squared_error(self, y_true, y_pred):
-        n = 1/K.sum(K.cast(K.not_equal(y_true, 0), 'float32'), 1)
+        mask = K.cast(K.not_equal(y_true, 0), 'float32')
+        n = 1/K.sum(mask, 1)
         n = K.tile(n, (K.shape(n)[1], self.n_sessions))
-        K.print_tensor(K.shape(n), 'n')
-
         # n = K.reshape(n, K.shape(n)+(1,))
-        return (K.sum(K.square(y_pred - y_true), 2) * n) / K.sum(K.sum(n))
+        n = K.batch_flatten(mask) * n
+
+        sq_errs = K.batch_flatten(K.square(y_pred - y_true))
+        w_sq_errs = sq_errs * n
+        sum_w_sq_errs = K.sum(K.sum(w_sq_errs))
+        return sum_w_sq_errs / K.sum(K.sum(n))
 
         # return K.sum(K.prod(K.square(y_pred - y_true), n))# / K.sum(n)
         # return K.mean(K.square(y_pred - y_true), axis=-1)
@@ -191,7 +200,8 @@ class Rnn:
             y_0 = self.y_test
             churned = self.y_test_churned
 
-        pred_0 = self.model.predict(x)
+        # pred_0 = self.model.predict(x)
+        pred_0 = self.model.predict([x[:,:,self.device_indices[0]], x[:,:,self.temporal_indices], x[:,:,self.behav_indices]])
 
         if self.predict_sequence:
             mask = y_0 != 0
@@ -235,7 +245,8 @@ class Rnn:
         log_file = '{:02d}_{}_lr{}_inp{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr,self.x_train.shape[2], self.n_sessions, self.hidden_neurons)
         # self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
         # self.model.fit(self.x_train, self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit(self.x_train_train_ret, self.y_train_train_ret, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        # self.model.fit(self.x_train_train_ret, self.y_train_train_ret, batch_size=1000, epochs=1000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit([self.x_train_train_ret[:,:,self.device_indices[0]], self.x_train_train_ret[:,:,self.temporal_indices], self.x_train_train_ret[:,:,self.behav_indices]], self.y_train_train_ret, batch_size=1000, epochs=1000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rnn_new/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
@@ -249,13 +260,13 @@ def runBayesOpt():
     RESULT_PATH = '../../results/rnn/bayes_opt/'
 
     bounds = {'hidden_neurons': (1, 20), 'n_sessions': (1,150)}
-    n_iter = 30
+    n_iter = 20
 
     bOpt = BayesianOptimization(_evaluatePerformance, bounds)
 
-    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kappa=6, kernel=Matern())
+    bOpt.maximize(init_points=2, n_iter=n_iter, acq='ucb', kernel=Matern())
 
-    with open(RESULT_PATH+'bayes_opt_rnn_new_new.pkl', 'wb') as handle:
+    with open(RESULT_PATH+'bayes_opt_rnn_4.pkl', 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
@@ -265,7 +276,7 @@ def _evaluatePerformance(hidden_neurons, n_sessions):
     K.clear_session()
     hidden_neurons = np.floor(hidden_neurons).astype('int')
     n_sessions = np.floor(n_sessions).astype('int')
-    model = Rnn('bayes_opt', 45, hidden_neurons, n_sessions)
+    model = Rnn('bayes_opt', 65, hidden_neurons, n_sessions)
     model.fit_model()
     model.load_best_weights()
     pred = model.model.predict(model.x_train_val_ret)
