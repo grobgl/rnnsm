@@ -35,7 +35,7 @@ class RmtppData:
             d._initialise()
             return d
 
-    def get_xy(self, min_n_sessions=10, n_sessions=10, encode_devices=True, target_sequences=False, preset='startUserTimeHours'):
+    def get_xy(self, min_n_sessions=10, n_sessions=10, target_sequences=False, preset='startUserTimeHours'):
         x_train, x_test, y_train, y_test = self.x_train, self.x_test, self.y_train_unscaled, self.y_test_unscaled
         x_train_unscaled, x_test_unscaled = self.x_train_unscaled, self.x_test_unscaled
         feature_indices = self.presets[preset]['feature_indices']
@@ -43,12 +43,12 @@ class RmtppData:
         target_indices = self.presets[preset]['target_indices']
         targets = self.presets[preset]['target']
 
-        if encode_devices:
-            feature_indices = [self.deviceEncIndex] + feature_indices
-            features = ['device'] + features
-        else:
-            feature_indices = self.deviceIndices + feature_indices
-            features = self.devices + features
+        # if encode_devices:
+        #     feature_indices = [self.deviceEncIndex] + feature_indices
+        #     features = ['device'] + features
+        # else:
+        #     feature_indices = self.deviceIndices + feature_indices
+        #     features = self.devices + features
 
         y_train = y_train.apply(lambda x: x.T[target_indices].T)
         y_test = y_test.apply(lambda x: x.T[target_indices].T)
@@ -97,9 +97,12 @@ class RmtppData:
         self.churned_cust = churned.index[churned].values
         self.num_sessions = self.df_0.groupby('customerId').customerId.count()
 
-        # encode devices (in range 1-..)
+        # encoded features (in range 1-..)
         self.deviceEncoder = LabelEncoder()
         df_0['device_enc'] = self.deviceEncoder.fit_transform(df_0.device) + 1
+        df_0['hourOfDay_enc'] = df_0.hourOfDay + 1
+        df_0['dayOfMonth_enc'] = df_0.dayOfMonth
+        df_0['dayOfWeek_enc'] = df_0.dayOfWeek + 1
 
         # get times in days
         df_0['startUserDate'] = df_0.startUserTime.dt.date.apply(pd.Timestamp)
@@ -116,8 +119,15 @@ class RmtppData:
         train_df_unscaled = self.train_df_unscaled = df_0[df_0.customerId.isin(churned.index[train_i])]
         test_df_unscaled = self.test_df_unscaled = df_0[df_0.customerId.isin(churned.index[test_i])]
 
+        train_features = self.train_features = sorted(list(set(df_0.columns) - set(['customerId','startUserTime', 'startUserDate'])))
+        target_features = self.target_features = ['nextStartUserTimeDays', 'deltaNextDays', 'nextStartUserTimeHours', 'deltaNextHours', 'churned']
+        enc_features = [f for f in train_features if f.endswith('_enc')]
+        self.deviceEncIndex = train_features.index('device_enc')
+        self.devices = [x for x in train_features if x.startswith('device[')]
+        self.deviceIndices = list(map(train_features.index, self.devices))
+
         # scaling
-        features_numeric = self.features_numeric = sorted(list(set(df_0.columns) - set(['customerId','startUserTime', 'startUserDate', 'device_enc', 'device'])))
+        features_numeric = self.features_numeric = sorted(list(set(df_0.columns) - set(['customerId','startUserTime', 'startUserDate', 'device_enc', 'device', 'hourOfDay_enc', 'dayOfMonth_enc', 'dayOfWeek_enc'] + self.devices)))
         train_df_scaled = self.train_df_scaled = train_df_unscaled.copy()
         test_df_scaled = test_df_unscaled.copy()
         scaler = self.scaler = StandardScaler()
@@ -126,30 +136,41 @@ class RmtppData:
         self.train_df_scaled = train_df_scaled
         self.test_df_scaled = test_df_scaled
 
-        train_features = self.train_features = sorted(list(set(df_0.columns) - set(['customerId','startUserTime', 'startUserDate'])))
-        target_features = self.target_features = ['nextStartUserTimeDays', 'deltaNextDays', 'nextStartUserTimeHours', 'deltaNextHours', 'churned']
-
         # storing feature/target combinations as features for quick access
         # format: predict/mainFeature
-        self.deviceEncIndex = train_features.index('device_enc')
-        self.devices = [x for x in train_features if x.startswith('device[')]
-        self.deviceIndices = list(map(train_features.index, self.devices))
         self.presets = {
-            'deltaNextHours': {
-                'features': sorted(list(set(self.train_features) - \
-                                        set(['deltaNextHours', 'startUserTimeDays', 'deltaNextDays', 'deltaPrevDays', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
-                'target': ['nextStartUserTimeHours', 'deltaNextHours', 'churned'] },
             'deltaNextDays': {
                 'features': sorted(list(set(self.train_features) - \
-                                        set(['deltaNextHours', 'startUserTimeHours', 'deltaNextDays', 'deltaPrevHours', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
+                                        set(['deltaNextHours', 'startUserTimeHours',
+                                             'deltaNextDays', 'deltaPrevHours', 'churned',
+                                             'device_enc', 'device', 'nextStartUserTimeHours',
+                                             'nextStartUserTimeDays'] + enc_features))),
                 'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] },
-            'nextStartUserTimeHours': {
+
+            'deltaNextDays_enc': {
                 'features': sorted(list(set(self.train_features) - \
-                                        set(['deltaNextHours', 'startUserTimeDays', 'deltaNextDays', 'deltaPrevDays', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
-                'target': ['nextStartUserTimeHours', 'deltaNextHours', 'churned'] },
+                                        set(['deltaNextHours', 'startUserTimeHours',
+                                             'deltaNextDays', 'deltaPrevHours', 'churned',
+                                             'device', 'nextStartUserTimeHours',
+                                             'nextStartUserTimeDays', 'hourOfDay', 'dayOfWeek',
+                                             'dayOfMonth'] + self.devices))),
+                'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] },
+
             'nextStartUserTimeDays': {
                 'features': sorted(list(set(self.train_features) - \
-                                        set(['deltaNextHours', 'startUserTimeHours', 'deltaNextDays', 'deltaPrevHours', 'churned', 'device_enc', 'device', 'nextStartUserTimeHours', 'nextStartUserTimeDays'] + self.devices))),
+                                        set(['deltaNextHours', 'startUserTimeHours',
+                                             'deltaNextDays', 'deltaPrevHours', 'churned',
+                                             'device_enc', 'device', 'nextStartUserTimeHours',
+                                             'nextStartUserTimeDays'] + enc_features))),
+                'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] },
+
+            'nextStartUserTimeDays_enc': {
+                'features': sorted(list(set(self.train_features) - \
+                                        set(['deltaNextHours', 'startUserTimeHours',
+                                             'deltaNextDays', 'deltaPrevHours', 'churned',
+                                             'device', 'nextStartUserTimeHours',
+                                             'nextStartUserTimeDays', 'hourOfDay', 'dayOfWeek',
+                                             'dayOfMonth'] + self.devices))),
                 'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] }}
 
         for preset in self.presets:

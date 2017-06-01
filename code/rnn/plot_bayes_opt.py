@@ -34,21 +34,23 @@ def posterior(bo, grid):
 
 def plot_gp(steps=32, width=1, height=None):
     # bo = BayesianOptimization(lambda x: 0, bounds)
-    bo = pickle.load(open('../../results/rnn/bayes_opt/bayes_opt_rnn_new.pkl', 'rb'))
+    bo = pickle.load(open('../../results/rnn/bayes_opt/bayes_opt_rnn_5.pkl', 'rb'))
     bo.X = bo.X[:,[1,0]][:steps]
     bo.Y = -bo.Y[:steps]
 
     x = np.arange(1, 151)
-    y = np.arange(1, 26)
+    y = np.arange(1, 101)
     grid = [(i,j) for j in y for i in x]
 
     fig, ax = newfig(width, height)
 
     # mu, sigma = posterior(bo, res, grid)
     mu, sigma = posterior(bo, grid)
+    mu = np.log(mu)
     # return x,y,mu,grid
 
-    cs = ax.contourf(x,y,mu.reshape((25,150)), np.geomspace(750, 2550, 20))
+    # cs = ax.contourf(x,y,mu.reshape((100,150)), np.geomspace(750, 2550, 20), cmap=plt.cm.viridis_r)
+    cs = ax.contourf(x,y,mu.reshape((100,150)),np.geomspace(np.log(750), np.log(2550), 20), cmap=plt.cm.viridis_r)
 
     # samples_x = [x[0] for x in res['X']]
     # samples_y = [x[1] for x in res['X']]
@@ -58,25 +60,27 @@ def plot_gp(steps=32, width=1, height=None):
     # ax.plot(bo.X[:steps].flatten(), bo.Y[:steps], 'D', markersize=8, label=u'Observations', color='r')
     # ax.plot(x, mu, '--', color='k', label='Prediction')
     ax.set_xlim((1, 150))
-    ax.set_ylim((1, 25))
+    ax.set_ylim((1, 100))
 
     ax.set_xlabel('Number of active days')
     ax.set_ylabel('Number of LSTM cells')
-    ax.legend()
+    ax.legend(loc=1)
     cbar = fig.colorbar(cs)
     cbar.ax.set_ylabel('Posterior mean (MSE)')
+    xs = list(map(lambda x: float(x.get_text()[1:-1]), cbar.ax.get_yticklabels()))
+    cbar.ax.set_yticklabels(list(map(lambda x: int(np.ceil(np.exp(x))), xs)))
     sc.set_clip_on(False)
     fig.tight_layout()
     fig.show()
 
 def plot_gp_var(steps=32, width=1, height=None):
     # bo = BayesianOptimization(lambda x: 0, bounds)
-    bo = pickle.load(open('../../results/rnn/bayes_opt/bayes_opt_rnn_new.pkl', 'rb'))
+    bo = pickle.load(open('../../results/rnn/bayes_opt/bayes_opt_rnn_5.pkl', 'rb'))
     bo.X = bo.X[:,[1,0]][:steps]
     bo.Y = -bo.Y[:steps]
 
     x = np.arange(1, 151)
-    y = np.arange(1, 26)
+    y = np.arange(1, 101)
     grid = [(i,j) for j in y for i in x]
 
     fig, ax = newfig(width, height)
@@ -85,7 +89,8 @@ def plot_gp_var(steps=32, width=1, height=None):
     mu, sigma = posterior(bo, grid)
     # return x,y,mu,grid
 
-    cs = ax.contourf(x,y,sigma.reshape((25,150)), 20)
+    # cs = ax.contourf(x,y,sigma.reshape((100,150)), 20)
+    cs = ax.contourf(x,y,sigma.reshape((100,150)), 20, cmap=plt.cm.viridis_r)
 
     # samples_x = [x[0] for x in res['X']]
     # samples_y = [x[1] for x in res['X']]
@@ -95,11 +100,11 @@ def plot_gp_var(steps=32, width=1, height=None):
     # ax.plot(bo.X[:steps].flatten(), bo.Y[:steps], 'D', markersize=8, label=u'Observations', color='r')
     # ax.plot(x, mu, '--', color='k', label='Prediction')
     ax.set_xlim((1, 150))
-    ax.set_ylim((1, 25))
+    ax.set_ylim((1, 100))
 
     ax.set_xlabel('Number of active days')
     ax.set_ylabel('Number of LSTM cells')
-    ax.legend()
+    ax.legend(loc=1)
     cbar = fig.colorbar(cs)
     cbar.ax.set_ylabel('Posterior variance')
     sc.set_clip_on(False)
