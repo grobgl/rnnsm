@@ -43,15 +43,18 @@ class Rmtpp:
         self.hidden_neurons = hidden_neurons
         self.n_sessions = n_sessions
         self.data = RmtppData.instance()
-        self.set_x_y()
+        self.set_x_y(n_sessions=n_sessions)
         self.set_model()
-        self.name = name
+        self.name = '{:02d}_{}_hiddenNr{}_nsess{}'.format(run, name, hidden_neurons, n_sessions)
         self.run = run
-        self.best_model_cp_file = '../../results/rmtpp_new/{:02d}_{}.hdf5'.format(run, name)
+        self.best_model_cp_file = '../../results/rmtpp_new/{}.hdf5'.format(self.name)
         self.best_model_cp = ModelCheckpoint(self.best_model_cp_file, monitor="val_loss",
                                              save_best_only=True, save_weights_only=False)
+        self.embeddings=['device', 'dayOfMonth', 'dayOfWeek', 'hourOfDay']
+        self.embeddings_layer_names = [e+'_emb' for e in self.embeddings]
+        self.embeddings_metadata={'/home/georg/Workspace/fy_project/code/rnn/{}_metadata.tsv'.format(e) for e in self.embeddings}
 
-    def set_x_y(self, include_churned=False, preset='deltaNextDays'):
+    def set_x_y(self, min_n_sessions=0, n_sessions=100, preset='deltaNextDays_enc'):
         self.x_train, \
         self.x_test, \
         self.x_train_unscaled, \
@@ -59,7 +62,7 @@ class Rmtpp:
         self.y_train, \
         self.y_test, \
         self.features, \
-        self.targets = self.data.get_xy(min_n_sessions=0, n_sessions=self.n_sessions, preset=preset, target_sequences=self.predict_sequence, encode_devices=True)
+        self.targets = self.data.get_xy(min_n_sessions=min_n_sessions, n_sessions=n_sessions, preset=preset, target_sequences=self.predict_sequence)
 
         if self.predict_sequence:
             self.y_train_churned = self.y_train[:,-1,self.targets.index('churned')].astype('bool')
@@ -70,14 +73,18 @@ class Rmtpp:
 
         train_train_i, train_val_i = self.train_i, self.test_i = next(StratifiedShuffleSplit(test_size=.2, random_state=42).split(self.x_train, self.y_train_churned))
 
-        temporal_features = ['dayOfMonth', 'dayOfWeek', 'hourOfDay', 'deltaPrevDays', 'startUserTimeDays', 'sessionLengthSec']
-        self.device_index = self.features.index('device')
-        self.temporal_indices = list(map(self.features.index, temporal_features))
-        self.behav_indices = list(map(self.features.index, set(self.features) - set(temporal_features + ['device'])))
+        self.device_index = self.features.index('device_enc')
+        self.dayOfMonth_index = self.features.index('dayOfMonth_enc')
+        self.dayOfWeek_index = self.features.index('dayOfWeek_enc')
+        self.hourOfDay_index = self.features.index('hourOfDay_enc')
+        self.num_features = list(set(self.features) - set([self.device_index, self.dayOfMonth_index, self.dayOfWeek_index, self.hourOfDay_index]))
+        self.num_indices = list(map(self.features.index, self.num_features))
         self.startTimeDaysIndex = self.features.index('startUserTimeDays')
 
-        # self.x_train = self.x_train[:,:,used_feature_indices]
-        # self.x_test = self.x_test[:,:,used_feature_indices]
+        used_feature_indices = list(range(len(self.features)))
+
+        self.x_train = self.x_train[:,:,used_feature_indices].astype('float32')
+        self.x_test = self.x_test[:,:,used_feature_indices].astype('float32')
         self.x_train_train = self.x_train[train_train_i]
         self.x_train_val = self.x_train[train_val_i]
         self.x_train_train_unscaled = self.x_train_unscaled[train_train_i]
@@ -117,44 +124,47 @@ class Rmtpp:
     def set_model(self, lr=.01):
         self.lr = lr
         len_seq = self.x_train.shape[1]
-        n_devices = np.unique(self.x_train[:,:,self.device_index]).shape[0]
-        len_temporal = len(self.temporal_indices)
-        len_behav = len(self.behav_indices)
+        num_num_features = len(self.num_features)
+        num_devices = int(self.x_train[:,:,self.device_index].max())
+        num_dayOfMonths = int(self.x_train[:,:,self.dayOfMonth_index].max())
+        num_dayOfWeeks = int(self.x_train[:,:,self.dayOfWeek_index].max())
+        num_hourOfDays = int(self.x_train[:,:,self.hourOfDay_index].max())
 
         lstm_neurons = self.hidden_neurons
 
-        # use embedding layer for devices
+        # embedding layers
         device_input = Input(shape=(len_seq,), dtype='int32', name='device_input')
-        device_embedding = Embedding(output_dim=4, input_dim=n_devices,
-                                     input_length=len_seq, mask_zero=True)(device_input)
+        device_embedding = Embedding(output_dim=1, input_dim=num_devices, name='device_emb',
+                                     input_length=len_seq, mask_zero=True,
+                                     embeddings_constraint=unit_norm())(device_input)
+        dayOfWeek_input = Input(shape=(len_seq,), dtype='int32', name='dayOfWeek_input')
+        dayOfWeek_embedding = Embedding(output_dim=2, input_dim=num_dayOfWeeks,
+                                        name='dayOfWeek_emb', embeddings_constraint=unit_norm(),
+                                        input_length=len_seq, mask_zero=True)(dayOfWeek_input)
+        hourOfDay_input = Input(shape=(len_seq,), dtype='int32', name='hourOfDay_input')
+        hourOfDay_embedding = Embedding(output_dim=4, input_dim=num_hourOfDays,
+                                        name='hourOfDay_emb', embeddings_constraint=unit_norm(),
+                                        input_length=len_seq, mask_zero=True)(hourOfDay_input)
 
-        # inputs for temporal and behavioural data
-        temporal_input = Input(shape=(len_seq, len_temporal), name='temporal_input')
-        # behav_input = Input(shape=(len_seq, len_behav), name='behav_input')
+        # inputs for numerical features
+        num_input = Input(shape=(len_seq, num_num_features), name='num_input')
 
-        temporal_masking = Masking(mask_value=0.)(temporal_input)
-        # behav_masking = Masking(mask_value=0.)(behav_input)
+        num_masking = Masking(mask_value=0.)(num_input)
 
-        # merge_inputs = concatenate([device_embedding, temporal_masking, behav_masking])
-        merge_inputs = concatenate([device_embedding, temporal_masking])
+        merge_inputs = concatenate([device_embedding, #dayOfMonth_embedding,
+                                    dayOfWeek_embedding, hourOfDay_embedding,
+                                    num_masking])
 
-        # lstm_output = LSTM(lstm_neurons, return_sequences=self.predict_sequence, recurrent_activation='relu')(merge_inputs)
-        # lstm_output = LSTM(lstm_neurons, activation='relu', return_sequences=self.predict_sequence, kernel_regularizer=regularizers.l2(0.02), activity_regularizer=regularizers.l2(0.02))(merge_inputs)
-        lstm_output = LSTM(lstm_neurons, activation='relu', return_sequences=self.predict_sequence, kernel_constraint=unit_norm())(merge_inputs)
+        lstm_output = LSTM(lstm_neurons,
+                           return_sequences=self.predict_sequence,
+                           kernel_regularizer=regularizers.l2(0.03))(merge_inputs)
 
-        predictions = Dense(1, activation='linear')(lstm_output)
+        predictions = Dense(1,
+                            activation='relu',
+                            name='predictions',
+                            kernel_regularizer=regularizers.l2(0.03))(lstm_output)
 
-        # bias_input = Input(shape=(1,), name='bias_input')
-        # bias_w_t = Dense(1, activation = 'linear', name='bias_w_t', kernel_initializer=Zeros(), bias_initializer=Constant(.001), kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
-        # bias_input = Masking(mask_value=0.)(bias_input)
-        # bias_w = Dense(1, activation = 'linear', kernel_constraint=non_neg(), bias_constraint=non_neg())(bias_input)
-        # bias_w = RepeatVector(len_seq)(bias_w)
-
-        # output = concatenate([predictions, bias_w])
-
-        # model = Model(inputs=[device_input, temporal_input, behav_input, bias_input], outputs=output)
-        # model = Model(inputs=[device_input, temporal_input, behav_input], outputs=predictions)
-        model = Model(inputs=[device_input, temporal_input], outputs=predictions)
+        model = Model(inputs=[device_input, dayOfWeek_input, hourOfDay_input, num_input], outputs=predictions)
 
         # loss = self.neg_log_likelihood_seq if self.predict_sequence else self.neg_log_likelihood
         loss = self.neg_log_likelihood_cens
@@ -163,21 +173,32 @@ class Rmtpp:
         self.model = model
         return model
 
-        # maskingLayer = Masking(mask_value=0., input_shape=input_shape)(inputs)
 
     def fit_model(self, initial_epoch=0):
-        log_file = '{:02d}_{}_lr{}_wsc{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr, self.w_scale, self.n_sessions, self.hidden_neurons)
-        # log_file = '{:02d}_{}_lr{}_inp{}'.format(self.run, self.name, self.lr,self.x_train.shape[2])
+        log_file = '{}_lr{}_inp{}'.format(self.name, self.lr, self.x_train.shape[2])
 
-        # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices], self.x_train_train_ret[:,:,self.behav_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        # self.model.fit([self.x_train_train_ret[:,:,self.device_index], self.x_train_train_ret[:,:,self.temporal_indices]], self.y_train_train_ret, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit([self.x_train_train[:,:,self.device_index], self.x_train_train[:,:,self.temporal_indices]], self.y_train_train, batch_size=1000, epochs=5000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-              , callbacks=[
-                TensorBoard(log_dir='../../logs/rmtpp_new/{}'.format(log_file), histogram_freq=100)
-                , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')
-                , self.best_model_cp
-                ]
-             )
+        self.model.fit([self.x_train_train[:,:,self.device_index].astype('int32'),
+                        self.x_train_train[:,:,self.dayOfWeek_index].astype('int32'),
+                        self.x_train_train[:,:,self.hourOfDay_index].astype('int32'),
+                        self.x_train_train[:,:,self.num_indices]],
+                       self.y_train_train,
+                       batch_size=1024,
+                       epochs=2000,
+                       validation_split=0.2,
+                       verbose=0,
+                       initial_epoch=initial_epoch,
+                       callbacks=[TensorBoard(log_dir='../../logs/rmtpp_new/{}'.format(log_file),
+                                              embeddings_freq=100,
+                                              embeddings_layer_names=self.embeddings_layer_names,
+                                              embeddings_metadata=self.embeddings_metadata,
+                                              histogram_freq=100),
+                                  EarlyStopping(monitor='val_loss',
+                                                min_delta=0,
+                                                patience=100,
+                                                verbose=1,
+                                                mode='auto'),
+                                  self.best_model_cp])
+
 
     def neg_log_likelihood(self, targets, output):
         """ Loss function for RMTPP model
@@ -247,6 +268,7 @@ class Rmtpp:
         # return res
         return res*mask
 
+
     def get_predictions(self, dataset='val', include_recency=False):
         if include_recency:
             pred_next_starttime_vec = np.vectorize(self.pred_next_starttime_rec)
@@ -254,17 +276,19 @@ class Rmtpp:
             pred_next_starttime_vec = np.vectorize(self.pred_next_starttime)
 
         if dataset=='test':
-            x = [self.x_test[:,:,self.device_index],
-                 self.x_test[:,:,self.temporal_indices]]
-                 # self.x_test[:,:,self.behav_indices]]
-            t_js = self.x_test_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
+            x = [self.x_test[:,:,self.device_index].astype('int32'),
+                 self.x_test[:,:,self.dayOfWeek_index].astype('int32'),
+                 self.x_test[:,:,self.hourOfDay_index].astype('int32'),
+                 self.x_test[:,:,self.num_indices]]
             y = self.y_test
+            t_js = self.x_test_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
         else:
-            x = [self.x_train_val[:,:,self.device_index],
-                 self.x_train_val[:,:,self.temporal_indices]]
-                 # self.x_train_val[:,:,self.behav_indices]]
-            t_js = self.x_train_val_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
+            x = [self.x_train_val[:,:,self.device_index].astype('int32'),
+                 self.x_train_val[:,:,self.dayOfWeek_index].astype('int32'),
+                 self.x_train_val[:,:,self.hourOfDay_index].astype('int32'),
+                 self.x_train_val[:,:,self.num_indices]]
             y = self.y_train_val
+            t_js = self.x_train_val_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
 
         pred = self.model.predict(x)
         cur_states = pred[:,-1].ravel()

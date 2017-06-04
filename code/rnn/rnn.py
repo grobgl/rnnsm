@@ -159,7 +159,7 @@ class Rnn:
             y_0 = self.y_train_val
             churned = self.y_train_val_churned
             unscaled = self.x_train_val_unscaled
-        if dataset=='train':
+        elif dataset=='train':
             x = self.x_train_train
             y_0 = self.y_train_train
             churned = self.y_train_train_churned
