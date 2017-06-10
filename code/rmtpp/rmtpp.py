@@ -9,7 +9,7 @@ from scipy.integrate import trapz
 
 from keras.models import Sequential, Model
 from keras.layers import Dense, Dropout, Activation, Input, Masking, concatenate, Embedding, RepeatVector, Reshape
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import LSTM, GRU
 from keras.callbacks import Callback, LambdaCallback, TensorBoard, ReduceLROnPlateau, EarlyStopping, ModelCheckpoint
 from keras.optimizers import Adam, RMSprop
 from keras.initializers import Constant, Zeros
@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 from sklearn.metrics import mean_squared_error, accuracy_score, recall_score, roc_auc_score
 from sklearn.decomposition import PCA
 from lifelines.utils import concordance_index
-from sklearn.gaussian_process.kernels import Matern
+from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 from bayes_opt import BayesianOptimization
 
 from rmtpp_data import *
@@ -39,15 +39,16 @@ class Rmtpp:
 
     time_scale = .1
 
-    def __init__(self, name, run, hidden_neurons=32, n_sessions=100, w_scale=.1):
+    def __init__(self, name, run, hidden_neurons=32, dense_neurons=32, n_sessions=32, w_scale=.15, predict_sequence=False):
         self.w_scale = w_scale
-        self.predict_sequence = False
+        self.predict_sequence = predict_sequence
         self.hidden_neurons = hidden_neurons
+        self.dense_neurons = dense_neurons
         self.n_sessions = n_sessions
         self.data = RmtppData.instance()
         self.set_x_y(n_sessions=n_sessions)
         self.set_model()
-        self.name = '{:02d}_{}_hiddenNr{}_nsess{}_ws{}_ts_{}'.format(run, name, hidden_neurons, n_sessions, self.w_scale, self.time_scale)
+        self.name = '{:02d}_{}_hiddenNr{}_dnsnr{}_nsess{}_ws{}_ts_{}'.format(run, name, hidden_neurons, dense_neurons, n_sessions, self.w_scale, self.time_scale)
         self.run = run
         self.best_model_cp_file = '../../results/rmtpp_new/{}.hdf5'.format(self.name)
         self.best_model_cp = ModelCheckpoint(self.best_model_cp_file, monitor="val_loss",
@@ -133,7 +134,7 @@ class Rmtpp:
         self.model.load_weights(self.best_model_cp_file)
 
 
-    def set_model(self, lr=.02):
+    def set_model(self, lr=.001):
         self.lr = lr
         len_seq = self.x_train.shape[1]
         num_num_features = len(self.num_features)
@@ -172,14 +173,22 @@ class Rmtpp:
                                     dayOfWeek_embedding, hourOfDay_embedding,
                                     num_masking])
 
-        lstm_output = LSTM(lstm_neurons,
-                           activation='tanh',
+        # preprocessing layer
+        merge_inputs = Dense(self.dense_neurons, activation='tanh')(merge_inputs)
+        merge_inputs = Dropout(.2)(merge_inputs)
+
+        # lstm_output = LSTM(lstm_neurons,
+        lstm_output = GRU(lstm_neurons,
+                           # activation='tanh',
                            return_sequences=self.predict_sequence,
                            # kernel_regularizer=regularizers.l2(0.03),
                            # kernel_regularizer=max_norm(),
                            dropout=.2,
                            # activity_regularizer=max_norm()
                            )(merge_inputs)
+
+        # lstm_output = Dense(32, activation='tanh')(lstm_output)
+        # lstm_output = Dropout(.2)(lstm_output)
 
         predictions = Dense(1,
                             activation='linear',
@@ -205,7 +214,7 @@ class Rmtpp:
                         self.x_train_train[:,:,self.hourOfDay_index].astype('int32'),
                         self.x_train_train[:,:,self.num_indices]],
                        self.y_train_train,
-                       batch_size=4096,
+                       batch_size=1024,
                        epochs=2000,
                        validation_split=0.2,
                        verbose=0,
@@ -317,7 +326,7 @@ class Rmtpp:
                  self.x_test[:,:,self.hourOfDay_index].astype('int32'),
                  self.x_test[:,:,self.num_indices]]
             y = self.y_test
-            t_js = self.x_test_unscaled[:,-1,self.startTimeDaysIndex] * self.time_scale
+            t_js = self.x_test_unscaled[:,:,self.startTimeDaysIndex] * self.time_scale
         else:
             x = [self.x_train_val[:,:,self.device_index].astype('int32'),
                  # self.x_train_val[:,:,self.dayOfMonth_index].astype('int32'),
@@ -344,12 +353,6 @@ class Rmtpp:
         return t_pred/self.time_scale, t_true/self.time_scale
 
 
-    # def get_rmse_days(self, dataset='val', include_recency=False):
-    #     t_pred, t_true = self.get_predictions(dataset, include_recency)
-
-    #     return np.sqrt(mean_squared_error(t_true, t_pred))
-
-
     def pred_next_starttime(self, cur_state, t_j):
         ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
         delta_ts = ts - t_j
@@ -366,8 +369,6 @@ class Rmtpp:
         ts = np.arange(t_j, 1000*self.time_scale, self.time_scale)
         delta_ts = ts - t_j
         samples = self._pt(delta_ts, cur_state)
-        # return samples
-        # samples = delta_ts * self._pt(delta_ts, cur_state)
 
         return (1/s_ts) * trapz(samples[ts>(365*self.time_scale)], ts[ts>(365*self.time_scale)]) + trapz(samples[ts<=(365*self.time_scale)], ts[ts<=(365*self.time_scale)])
 
@@ -375,17 +376,20 @@ class Rmtpp:
     def _pt(self, delta_t, cur_state):
         w_t = self.w_scale
         w = self.w_scale
-        # w_t = w
-        # w_t = 1
-        return delta_t * np.exp(-(-cur_state - w_t*delta_t \
-                                   - (1/w)*np.exp(cur_state) \
-                                   + (1/w)*np.exp(cur_state + w_t*(delta_t))))
+        return np.exp((1/w)*np.exp(cur_state) - (1/w)*np.exp(cur_state + w_t*(delta_t)))
+        # w_t = self.w_scale
+        # w = self.w_scale
+        # return delta_t * np.exp(-(-cur_state - w_t*delta_t \
+        #                            - (1/w)*np.exp(cur_state) \
+        #                            + (1/w)*np.exp(cur_state + w_t*(delta_t))))
 
     def get_scores(self, dataset='val', include_recency=False):
         if dataset=='val':
             churned = self.y_train_val_churned
+            unscaled = self.x_train_val_unscaled
         else:
             churned = self.y_test_churned
+            unscaled = self.x_test_unscaled
 
         pred_0, y_0 = self.get_predictions(dataset, include_recency)
 
@@ -407,8 +411,10 @@ class Rmtpp:
             rmse_days_all = 0
 
         rtd_ind = self.features.index('startUserTimeDays')
-        ret_time_days_pred = self.x_train_val_unscaled[:,-1,rtd_ind] + pred_last
-        ret_time_days_true = self.x_train_val_unscaled[:,-1,rtd_ind] + y_last
+
+        ret_time_days_pred = unscaled[:,-1,rtd_ind] + pred_last
+        ret_time_days_true = unscaled[:,-1,rtd_ind] + y_last
+
 
         churned_pred = ret_time_days_pred >= churn_days
         churned_true = ret_time_days_true >= churn_days
@@ -430,14 +436,43 @@ class Rmtpp:
 def runBayesOpt():
     RESULT_PATH = '../../results/rmtpp_new/bayes_opt/'
 
-    bounds = {'w_scale': (0.001,1)}
+    # bounds = {'hidden_neurons': (1, 100), 'dense_neurons': (1,100)}
+    bounds = {'w_scale': (.0001, 1.)}
     n_iter = 20
 
     bOpt = BayesianOptimization(_evaluatePerformance, bounds)
 
-    bOpt.maximize(init_points=4, n_iter=n_iter, acq='ucb', kernel=Matern())
+    # bOpt.initialize({'targets': [-2762.34752, -6820.47174, -5671.95848, -4458.36495],
+    #                  'w_scale': [0.3746, 0.9507, 0.7320, 0.5987]})
+    # bOpt.initialize({'w_scale': np.array([0.3746, 0.9507, 0.7320, 0.5987, 0.0001, 0.5362, 0.6414, 0.8423, 0.8101, 0.8728, 0.8289, 0.1884, 1.0000, 0.4590, 0.7801, 0.2844, 0.7915, 0.7659, 0.0978, 0.6882, 0.4983, 0.5691, 0.4209, 0.8553]),
+    #                  'targets': -np.array([64.694491602844849,
+    #                                       96.325984867170703,
+    #                                       94.282091001473148,
+    #                                       79.028932108368451,
+    #                                       66.328999345455429,
+    #                                       80.06554529345641,
+    #                                       86.673739067258424,
+    #                                       96.070839922337683,
+    #                                       91.61875460161319,
+    #                                       95.183281119114056,
+    #                                       91.719864616161928,
+    #                                       59.024560678731802,
+    #                                       99.498293832305706,
+    #                                       76.732316053755667,
+    #                                       92.14056326130931,
+    #                                       57.639273218402288,
+    #                                       92.137971389647902,
+    #                                       90.788065365827876,
+    #                                       67.18060379333096,
+    #                                       89.842938462274176,
+    #                                       81.532174387971722,
+    #                                       86.448177020462524,
+    #                                       69.130375113932558,
+    #                                       97.745466472895842])/100})
 
-    with open(RESULT_PATH+'bayes_opt_rnn_emb.pkl', 'wb') as handle:
+    bOpt.maximize(init_points=4, n_iter=n_iter)
+
+    with open(RESULT_PATH+'bayes_opt_w_scale_ret_noseq_rmse_32_32_32.pkl', 'wb') as handle:
         pickle.dump(bOpt, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return bOpt
@@ -445,12 +480,16 @@ def runBayesOpt():
 def _evaluatePerformance(w_scale):
     # def __init__(self, name, run, hidden_neurons=32, n_sessions=100):
     K.clear_session()
+    # hidden_neurons = np.floor(hidden_neurons).astype('int')
+    # dense_neurons = np.floor(dense_neurons).astype('int')
+    # print('hidden_neurons: {}, dense_neurons: {}'.format(hidden_neurons, dense_neurons))
     print('w_scale: {}'.format(w_scale))
-    model = Rmtpp('bayes_opt', 8, 64, 16, w_scale=w_scale)
+    model = Rmtpp('bayes_opt', 39, w_scale=w_scale, predict_sequence=False)
     model.fit_model()
     model.load_best_weights()
     scores = model.get_scores()
-    return -(scores['rmse_days'] ** 2)
+    print(scores)
+    return -scores['rmse_days']/100
 
 
 predPeriod = {
@@ -492,7 +531,7 @@ def showResidPlot_short_date(model, y_pred, dataset='val', width=1, height=None)
     grid.ax_joint.set_xlabel('actual return date')
     grid.ax_joint.set_ylabel('residual (days)')
 
-    grid.ax_joint.set_ylim((-110,110))
+    grid.ax_joint.set_ylim((-200,200))
     plt.show()
 
 
