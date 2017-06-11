@@ -105,10 +105,13 @@ class SurvivalModel:
             df_unscaled = self.data.test_unscaled_df
 
         if indices is None:
-            indices = self.data.split_val_ind
+            if dataset=='test':
+                indices=self.data.test_ind
+            else:
+                indices = self.data.split_val_ind
 
-        df = df.iloc[indices]
-        df_unscaled = df_unscaled.iloc[indices]
+        # df = df.iloc[indices]
+        # df_unscaled = df_unscaled.iloc[indices]
 
         pred_durations = self.predict_expectation(df, df_unscaled)
         pred_churn = self.predict_churn(pred_durations, df_unscaled)

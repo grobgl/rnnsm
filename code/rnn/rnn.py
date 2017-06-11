@@ -34,7 +34,7 @@ RESULT_PATH = '../../results/rnn/bayes_opt/'
 
 class Rnn:
 
-    def __init__(self, name, run, hidden_neurons=32, n_sessions=100):
+    def __init__(self, name, run, hidden_neurons=10, n_sessions=50):
         self.predict_sequence = False
         self.hidden_neurons = hidden_neurons
         self.n_sessions = n_sessions
@@ -89,8 +89,10 @@ class Rnn:
         self.y_train_train_churned = self.y_train_churned[train_train_i]
         self.y_train_val_churned = self.y_train_churned[train_val_i]
 
+        self.x_train_ret = self.x_train[~self.y_train_churned]
         self.x_train_train_ret = self.x_train_train[~self.y_train_train_churned]
         self.x_train_val_ret = self.x_train_val[~self.y_train_val_churned]
+        self.y_train_ret = self.y_train.T[1].T.astype('float32')[~self.y_train_churned]
         self.y_train_train_ret = self.y_train_train[~self.y_train_train_churned]
         self.y_train_val_ret = self.y_train_val[~self.y_train_val_churned]
 
@@ -104,6 +106,7 @@ class Rnn:
             self.y_train_val_ret = self.y_train_val_ret.reshape(self.y_train_val_ret.shape+(1,))
             self.y_train = self.y_train.reshape(self.y_train.shape+(1,))
             self.y_test = self.y_test.reshape(self.y_test.shape+(1,))
+            self.y_train_ret = self.y_train_ret.reshape(self.y_train_ret.shape+(1,))
 
     def load_best_weights(self):
         self.model.load_weights(self.best_model_cp_file)
@@ -171,6 +174,10 @@ class Rnn:
             unscaled = self.x_test_unscaled
 
         pred_0 = self.model.predict(x)
+        # pred_0 = np.array([58.384029]*self.y_test.shape[0])
+        # pred_0 = 365 -  self.x_test_unscaled[:,-1,13] + 25
+        # pred_0 = np.load('../../results/evaluation/rmtpp_abs/predictions_days.npy') - 47.04
+
         # pred_0 = self.model.predict([x[:,:,self.device_indices[0]], x[:,:,self.temporal_indices], x[:,:,self.behav_indices]])
 
         if self.predict_sequence:
@@ -215,7 +222,8 @@ class Rnn:
         log_file = '{:02d}_{}_lr{}_inp{}_nsess{}_hiddenNr{}'.format(self.run, self.name, self.lr,self.x_train.shape[2], self.n_sessions, self.hidden_neurons)
         # self.model.fit([self.x_train_devices, self.x_train_temporal, self.x_train_behav], self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
         # self.model.fit(self.x_train, self.y_train, batch_size=1000, epochs=500, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
-        self.model.fit(self.x_train_train_ret, self.y_train_train_ret, batch_size=1000, epochs=1000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        # self.model.fit(self.x_train_train_ret, self.y_train_train_ret, batch_size=1000, epochs=1000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
+        self.model.fit(self.x_train_ret, self.y_train_ret, batch_size=1000, epochs=2000, validation_split=0.2, verbose=0, initial_epoch=initial_epoch
               , callbacks=[
                 TensorBoard(log_dir='../../logs/rnn_new_2/{}'.format(log_file), histogram_freq=100)
                 , EarlyStopping(monitor='val_loss', min_delta=0, patience=100, verbose=1, mode='auto')

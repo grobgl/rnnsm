@@ -57,7 +57,7 @@ class Rmtpp:
         self.embeddings_layer_names = [e+'_emb' for e in self.embeddings]
         self.embeddings_metadata={'/home/georg/Workspace/fy_project/code/rnn/{}_metadata.tsv'.format(e) for e in self.embeddings}
 
-    def set_x_y(self, min_n_sessions=0, n_sessions=100, preset='deltaNextDays_enc'):
+    def set_x_y(self, min_n_sessions=20, n_sessions=100, preset='deltaNextDays_enc'):
         self.x_train, \
         self.x_test, \
         self.x_train_unscaled, \
@@ -177,9 +177,9 @@ class Rmtpp:
         merge_inputs = Dense(self.dense_neurons, activation='tanh')(merge_inputs)
         merge_inputs = Dropout(.2)(merge_inputs)
 
-        # lstm_output = LSTM(lstm_neurons,
-        lstm_output = GRU(lstm_neurons,
-                           # activation='tanh',
+        # lstm_output = GRU(lstm_neurons,
+        lstm_output = LSTM(lstm_neurons,
+                           activation='tanh',
                            return_sequences=self.predict_sequence,
                            # kernel_regularizer=regularizers.l2(0.03),
                            # kernel_regularizer=max_norm(),
@@ -193,6 +193,8 @@ class Rmtpp:
         predictions = Dense(1,
                             activation='linear',
                             name='predictions',
+                            # bias_constraint=max_norm(0)
+                            # bias_constraint=max_norm(0)
                             # kernel_regularizer=regularizers.l2(0.03)
                             )(lstm_output)
 
@@ -208,12 +210,12 @@ class Rmtpp:
     def fit_model(self, initial_epoch=0):
         log_file = '{}_lr{}_inp{}'.format(self.name, self.lr, self.x_train.shape[2])
 
-        self.model.fit([self.x_train_train[:,:,self.device_index].astype('int32'),
-                        # self.x_train_train[:,:,self.dayOfMonth_index].astype('int32'),
-                        self.x_train_train[:,:,self.dayOfWeek_index].astype('int32'),
-                        self.x_train_train[:,:,self.hourOfDay_index].astype('int32'),
-                        self.x_train_train[:,:,self.num_indices]],
-                       self.y_train_train,
+        self.model.fit([self.x_train[:,:,self.device_index].astype('int32'),
+                        # self.x_train[:,:,self.dayOfMonth_index].astype('int32'),
+                        self.x_train[:,:,self.dayOfWeek_index].astype('int32'),
+                        self.x_train[:,:,self.hourOfDay_index].astype('int32'),
+                        self.x_train[:,:,self.num_indices]],
+                       self.y_train,
                        batch_size=1024,
                        epochs=2000,
                        validation_split=0.2,
@@ -392,6 +394,7 @@ class Rmtpp:
             unscaled = self.x_test_unscaled
 
         pred_0, y_0 = self.get_predictions(dataset, include_recency)
+        # return pred_0, y_0
 
         if self.predict_sequence:
             mask = y_0 != 0
