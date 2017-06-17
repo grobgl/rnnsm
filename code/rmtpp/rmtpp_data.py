@@ -109,6 +109,8 @@ class RmtppData:
         df_0['startUserTimeDays'] = (df_0.startUserDate - obsPeriod['start']) / np.timedelta64(24, 'h')
         df_0['deltaNextDays'] = df_0.deltaNextHours / 24
         df_0['deltaPrevDays'] = df_0.deltaPrevHours / 24
+        df_0['logDeltaNextDays'] = np.log(df_0.deltaNextDays)
+        df_0['logDeltaPrevDays'] = np.log(df_0.deltaPrevDays)
 
         # add nextStartUserTimeHours
         df_0['nextStartUserTimeHours'] = df_0.startUserTimeHours + df_0.deltaNextHours
@@ -120,7 +122,7 @@ class RmtppData:
         test_df_unscaled = self.test_df_unscaled = df_0[df_0.customerId.isin(churned.index[test_i])]
 
         train_features = self.train_features = sorted(list(set(df_0.columns) - set(['customerId','startUserTime', 'startUserDate'])))
-        target_features = self.target_features = ['nextStartUserTimeDays', 'deltaNextDays', 'nextStartUserTimeHours', 'deltaNextHours', 'churned']
+        target_features = self.target_features = ['nextStartUserTimeDays', 'deltaNextDays', 'nextStartUserTimeHours', 'deltaNextHours', 'churned', 'logDeltaNextDays', 'logDeltaNextHours']
         enc_features = [f for f in train_features if f.endswith('_enc')]
         self.deviceEncIndex = train_features.index('device_enc')
         self.devices = [x for x in train_features if x.startswith('device[')]
@@ -144,7 +146,9 @@ class RmtppData:
                                         set(['deltaNextHours', 'startUserTimeHours',
                                              'deltaNextDays', 'deltaPrevHours', 'churned',
                                              'device_enc', 'device', 'nextStartUserTimeHours',
-                                             'nextStartUserTimeDays'] + enc_features))),
+                                             'nextStartUserTimeDays', 'logDeltaNextHours',
+                                             'logDeltaNextDays', 'logDeltaPrevHours',
+                                             'logDeltaPrevDays'] + enc_features))),
                 'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] },
 
             'deltaNextDays_enc': {
@@ -153,15 +157,30 @@ class RmtppData:
                                              'deltaNextDays', 'deltaPrevHours', 'churned',
                                              'device', 'nextStartUserTimeHours',
                                              'nextStartUserTimeDays', 'hourOfDay', 'dayOfWeek',
-                                             'dayOfMonth'] + self.devices))),
+                                             'dayOfMonth', 'logDeltaNextDays',
+                                             'logDeltaNextHours', 'logDeltaPrevHours',
+                                             'logDeltaPrevDays'] + self.devices))),
                 'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] },
+
+            'logDeltaNextDays_enc': {
+                'features': sorted(list(set(self.train_features) - \
+                                        set(['deltaNextHours', 'startUserTimeHours',
+                                             'deltaNextDays', 'deltaPrevHours', 'churned',
+                                             'device', 'nextStartUserTimeHours',
+                                             'nextStartUserTimeDays', 'hourOfDay', 'dayOfWeek',
+                                             'dayOfMonth', 'logDeltaNextDays',
+                                             'logDeltaNextHours', 'logDeltaPrevHours',
+                                             'deltaPrevDays'] + self.devices))),
+                'target': ['nextStartUserTimeDays', 'logDeltaNextDays', 'churned'] },
 
             'nextStartUserTimeDays': {
                 'features': sorted(list(set(self.train_features) - \
                                         set(['deltaNextHours', 'startUserTimeHours',
                                              'deltaNextDays', 'deltaPrevHours', 'churned',
                                              'device_enc', 'device', 'nextStartUserTimeHours',
-                                             'nextStartUserTimeDays'] + enc_features))),
+                                             'nextStartUserTimeDays', 'logDeltaNextHours',
+                                             'logDeltaNextDays', 'logDeltaPrevHours',
+                                             'logDeltaPrevDays'] + enc_features))),
                 'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] },
 
             'nextStartUserTimeDays_enc': {
@@ -170,7 +189,9 @@ class RmtppData:
                                              'deltaNextDays', 'deltaPrevHours', 'churned',
                                              'device', 'nextStartUserTimeHours',
                                              'nextStartUserTimeDays', 'hourOfDay', 'dayOfWeek',
-                                             'dayOfMonth'] + self.devices))),
+                                             'dayOfMonth', 'logDeltaNextDays',
+                                             'logDeltaNextHours', 'logDeltaPrevHours',
+                                             'logDeltaPrevDays'] + self.devices))),
                 'target': ['nextStartUserTimeDays', 'deltaNextDays', 'churned'] }}
 
         for preset in self.presets:

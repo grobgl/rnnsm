@@ -138,10 +138,10 @@ class Rmtpp:
         self.lr = lr
         len_seq = self.x_train.shape[1]
         num_num_features = len(self.num_features)
-        num_devices = int(self.x_train[:,:,self.device_index].max())
-        num_dayOfMonths = int(self.x_train[:,:,self.dayOfMonth_index].max())
-        num_dayOfWeeks = int(self.x_train[:,:,self.dayOfWeek_index].max())
-        num_hourOfDays = int(self.x_train[:,:,self.hourOfDay_index].max())
+        num_devices = int(self.x_train[:,:,self.device_index].max())+1
+        num_dayOfMonths = int(self.x_train[:,:,self.dayOfMonth_index].max()) + 1
+        num_dayOfWeeks = int(self.x_train[:,:,self.dayOfWeek_index].max()) + 1
+        num_hourOfDays = int(self.x_train[:,:,self.hourOfDay_index].max()) + 1
 
         lstm_neurons = self.hidden_neurons
 

@@ -1,8 +1,10 @@
 import sys
 import os
 sys.path.insert(0, '../utils')
+sys.path.insert(0, '../rmtpp')
 
 from dataPiping import makeunixtime
+from rmtpp_data import RmtppData
 from plot_format import *
 import seaborn.apionly as sns
 import matplotlib.dates as mdates
@@ -34,6 +36,9 @@ def loadData(stage=2, pruned=True):
 def loadStage2():
     df = pd.read_pickle('../../data/cleaned/stage2_pruned.pkl')
     return df
+
+def loadRmtppData():
+    return RmtppData.instance().df_0
 
 # check for null values
 def checkNullValues(df):
@@ -236,6 +241,18 @@ def plotDeltaNextContVs(df, vs, width=1, height=None):
     """
     fig, ax = newfig(width, height)
     df[df.startUserTime < pd.datetime(2016,1,1)].groupby(vs).deltaNextDays.mean().plot()
+    fig.show()
+
+def plotDetaNextRmtpp(df, width=1, height=None):
+    fig, ax = newfig(width, height)
+    grouped = df.groupby('customerId')
+    churned = grouped.churned.last()
+    deltaNextDays = grouped.deltaNextDays.last()[~churned]
+    deltaNextDays.hist(ax=ax, bins=int(deltaNextDays.max()))
+
+    ax.set_yscale('log', nonposy='clip')
+
+    fig.tight_layout()
     fig.show()
 
 
