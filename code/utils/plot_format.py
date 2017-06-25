@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib as mpl
-# mpl.use('pgf')
+mpl.use('pgf')
 
 def figsize(width, height=None):
     fig_width_pt = 426.79135                        # Get this from LaTeX using \the\textwidth
@@ -16,7 +16,7 @@ def figsize(width, height=None):
 pgf_with_latex = {                      # setup matplotlib to use latex for output
     "pgf.texsystem": "pdflatex",        # change this if using xetex or lautex
     "text.usetex": True,                # use LaTeX to write all text
-    "font.family": "serif",
+    "font.family": "sans-serif",
     "font.serif": [],                   # blank entries should cause plots to inherit fonts from the document
     "font.sans-serif": [],
     "font.monospace": [],

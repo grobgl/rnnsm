@@ -57,7 +57,7 @@ class Rmtpp:
         self.embeddings_layer_names = [e+'_emb' for e in self.embeddings]
         self.embeddings_metadata={'/home/georg/Workspace/fy_project/code/rnn/{}_metadata.tsv'.format(e) for e in self.embeddings}
 
-    def set_x_y(self, min_n_sessions=20, n_sessions=100, preset='deltaNextDays_enc'):
+    def set_x_y(self, min_n_sessions=0, n_sessions=100, preset='deltaNextDays_enc'):
         self.x_train, \
         self.x_test, \
         self.x_train_unscaled, \
@@ -328,7 +328,7 @@ class Rmtpp:
                  self.x_test[:,:,self.hourOfDay_index].astype('int32'),
                  self.x_test[:,:,self.num_indices]]
             y = self.y_test
-            t_js = self.x_test_unscaled[:,:,self.startTimeDaysIndex] * self.time_scale
+            t_js = self.x_test_unscaled[:,:,self.startTimeDaysIndex]
         else:
             x = [self.x_train_val[:,:,self.device_index].astype('int32'),
                  # self.x_train_val[:,:,self.dayOfMonth_index].astype('int32'),
@@ -336,11 +336,13 @@ class Rmtpp:
                  self.x_train_val[:,:,self.hourOfDay_index].astype('int32'),
                  self.x_train_val[:,:,self.num_indices]]
             y = self.y_train_val
-            t_js = self.x_train_val_unscaled[:,:,self.startTimeDaysIndex] * self.time_scale
+            t_js = self.x_train_val_unscaled[:,:,self.startTimeDaysIndex]
 
         if not self.predict_sequence:
             t_js = t_js[:,-1]
 
+        # t_js = np.log(t_js.astype('float') + 1) * self.time_scale
+        t_js = t_js * self.time_scale
 
         pred = self.model.predict(x)
         cur_states = pred.reshape(pred.shape[:-1])
@@ -352,6 +354,9 @@ class Rmtpp:
             t_true = y[:,0]
 
 
+        # t_pred = np.exp(t_pred/self.time_scale) - 1
+        # t_true = np.exp(t_true/self.time_scale) - 1
+        # return t_pred, t_true
         return t_pred/self.time_scale, t_true/self.time_scale
 
 

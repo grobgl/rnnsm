@@ -113,7 +113,7 @@ def plotCensorship3(width=1, height=None):
         observed = users.iloc[i].observed
         if observed:
             color = 'C0'
-            label = 'Returning user (uncensored)'
+            label = 'Retained user (uncensored)'
 
         lines['Session'] = ax.scatter([users.iloc[i].start], [i], marker='D', color='black', alpha=.3, label='Session')
         lines['Session'].remove()
@@ -142,7 +142,7 @@ def plotCensorship3(width=1, height=None):
     ax.set_yticks([])
     ax2.set_yticks([])
     handles=[predNew] + list(lines.values())
-    leg = ax2.legend(handles=handles, labels=[h.get_label() for h in handles], loc=4, bbox_to_anchor=(3.43, .022))
+    leg = ax2.legend(handles=handles, labels=[h.get_label() for h in handles], loc=4, bbox_to_anchor=(4., .022))
     leg.get_frame().set_alpha(1)
 
     plt.subplots_adjust(left=0.06, right=0.94, top=0.94, bottom=0.12)

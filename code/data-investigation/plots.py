@@ -37,8 +37,15 @@ def loadStage2():
     df = pd.read_pickle('../../data/cleaned/stage2_pruned.pkl')
     return df
 
-def loadRmtppData():
-    return RmtppData.instance().df_0
+def loadRmtppData(dataset='all'):
+    data = RmtppData.instance()
+    df = data.df_0
+    if dataset=='train':
+        df = df[df.customerId.isin(data.train_cust)]
+    elif dataset=='test':
+        df = df[df.customerId.isin(data.test_cust)]
+
+    return df
 
 # check for null values
 def checkNullValues(df):
@@ -128,7 +135,7 @@ def plotVisitsByDay(df, width=1, height=None):
     """
     fig, ax = newfig(width, height)
 
-    df.groupby(df.startTime.dt.date).customerId.count().plot(ax=ax)
+    df.groupby(df.startUserTime.dt.date).customerId.count().plot(ax=ax)
     obs = ax.axvspan(pd.datetime(2015,2,1), pd.datetime(2016,2,1), facecolor=colors[2], alpha=0.2, label='Observation time frame')
     pred = ax.axvspan(pd.datetime(2016,2,1), pd.datetime(2016,6,1), facecolor=colors[3], alpha=0.2, label='Prediction time frame')
 
@@ -141,14 +148,38 @@ def plotVisitsByDay(df, width=1, height=None):
     fig.tight_layout()
     fig.show()
 
+def plotVisitsByDayPres(df, width=1, height=None):
+    """Plots visits by day in obs. timeframe
+    """
+    fig, ax = newfig(width, height)
+    df = df.copy()
+    actCust = df[(df.startUserTime < pd.Timestamp('2015-04-01')) & (df.startUserTime > pd.Timestamp('2015-02-01'))].customerId.unique()
+    df = df[df.customerId.isin(actCust)]
+
+    df.groupby(df.startUserTime.dt.date).customerId.count().plot(ax=ax)
+    obs = ax.axvspan(pd.datetime(2015,2,1), pd.datetime(2015,4,1), facecolor=colors[2], alpha=0.2, label='Activity window')
+    # pred = ax.axvspan(pd.datetime(2016,2,1), pd.datetime(2016,6,1), facecolor=colors[3], alpha=0.2, label='Prediction time frame')
+
+    ax.set_xlabel('Day')
+    ax.set_ylabel('Visit count')
+    xTicks = [pd.datetime(2015,i,1) for i in range(2,13,2)] + [pd.datetime(2016,i,1) for i in range(2,7,2)]
+    ax.set_xlim((pd.datetime(2015,2,1), pd.datetime(2016,6,1)))
+    ax.set_ylim((500,4150))
+    # ax.set_xticks([])
+    ax.set_yticks([])
+    ax.legend(handles=[obs])
+
+    fig.tight_layout()
+    fig.show()
+
 def plotReturnTime(df, width=1, height=None):
     fig, ax = newfig(width, height)
 
     ax.hist(df.deltaNext.dropna().dt.days, bins=540)
     ax.set_yscale('log', nonposy='clip')
     ax.set_xlabel(r'Return time \texttt{[days]}')
-    ax.set_ylabel('Number of sessions')
-    ax.margins(0,.02)
+    ax.set_ylabel('Count')
+    # ax.margins(0,.02)
 
     fig.tight_layout()
     fig.show()
@@ -248,9 +279,15 @@ def plotDetaNextRmtpp(df, width=1, height=None):
     grouped = df.groupby('customerId')
     churned = grouped.churned.last()
     deltaNextDays = grouped.deltaNextDays.last()[~churned]
-    deltaNextDays.hist(ax=ax, bins=int(deltaNextDays.max()))
+    deltaNextDays.hist(ax=ax, bins=int(deltaNextDays.max()), grid=False)
 
     ax.set_yscale('log', nonposy='clip')
+    ax.set_ylabel('Count')
+    ax.set_xlabel(r'Return time \texttt{[days]}')
+    # ax.set_xlim((1, deltaNextDays.max()))
+    # xticks = ax.get_xticks()
+    # xticks[0] = 1
+    # ax.set_xticks(xticks)
 
     fig.tight_layout()
     fig.show()
@@ -286,7 +323,7 @@ def plotDevicesByTime(df, width=1, height=None):
 
     ax.margins(0, .25)
     ax.set_yticks(list(range(len(devices))))
-    ax.set_yticklabels(r'\texttt{{{}}}'.format(d) for d in devices)
+    ax.set_yticklabels(r'\textbf{{{}}}'.format(d) for d in devices)
     ax.set_ylabel('Device')
     ax.set_xlabel('Date')
 
@@ -326,7 +363,7 @@ def plotActionsByDeviceAndTime(df, width=1, height=None):
     ax.axhline(y=-sessionOffsetWeb, c="black", linewidth=.75)
     ax.margins(0, 0)
     ax.set_yticks([-sessionOffsetWeb + .5, -sessionOffsetUnk + .5] + devPosition)
-    ax.set_yticklabels([r'\textit{Total web}' + '\n' + r'\textit{sessions}', r'\textit{Total}' + '\n' + r'\textit{unknown}' + '\n' + r'\textit{sessions}'] + [r'\texttt{{{}}}'.format(d) for d in devices])
+    ax.set_yticklabels([r'\textit{Total web}' + '\n' + r'\textit{sessions}', r'\textit{Total}' + '\n' + r'\textit{unknown}' + '\n' + r'\textit{sessions}'] + [r'\textbf{{{}}}'.format(d) for d in devices])
     ax.set_ylabel('Interactions by device')
     ax.set_xlabel('Date')
 
@@ -485,26 +522,28 @@ def plotChurnWindows(width=1, height=None):
     churnObsAct = [pd.datetime(2015,3,16), pd.datetime(2015,5,27), pd.datetime(2015,8,10), pd.datetime(2016,1,4)]
 
     for i,dates in enumerate([noChurnAllWin, churnObsAct]):
-        sess = ax.plot_date(dates, [i+3]*len(dates), color=colors[0], linestyle='dashed', label='Customer session')
+        ax.axhline(i+3, color='k', linestyle='dashed', linewidth=.75)
+        sess = ax.plot_date(dates, [i+3]*len(dates), color=colors[0], marker='D', label='Active day')
 
     noChurnOnlyPred = [pd.datetime(2016,2,29), pd.datetime(2016,4,16), pd.datetime(2016,5,19)]
     churnNoAct = [pd.datetime(2015,2,28), pd.datetime(2015,3,16), pd.datetime(2015,8,19)]
     noChurnNoAct = [pd.datetime(2015,3,21), pd.datetime(2015,8,27), pd.datetime(2015,9,3), pd.datetime(2016,3,29),
                     pd.datetime(2016,4,14), pd.datetime(2016,4,25), pd.datetime(2016,5,8)]
     for i,dates in enumerate([noChurnOnlyPred, churnNoAct, noChurnNoAct]):
-        ax.plot_date(dates, [i]*len(dates), color=colors[0], linestyle='dashed')
+        ax.axhline(i, color='k', linestyle='dashed', linewidth=.75)
+        ax.plot_date(dates, [i]*len(dates), color=colors[0], marker='D')
 
     ax.scatter(pd.datetime(2016,2,29), -1, alpha=0) # just to grow plot window to the right
 
-    ylab = [r'\texttt{not churned}'+'\n'+r'\textit{not included}',
-            r'\texttt{churned}'+'\n'+r'\textit{not included}',
-            r'\texttt{not churned}'+'\n'+r'\textit{not included}',
-            r'\texttt{not churned}'+'\n'+r'\textit{included}',
-            r'\texttt{churned}'+'\n'+r'\textit{included}']
+    ylab = [r'\textbf{retained}'+'\n'+r'\textit{not included}',
+            r'\textbf{churned}'+'\n'+r'\textit{not included}',
+            r'\textbf{retained}'+'\n'+r'\textit{not included}',
+            r'\textbf{retained}'+'\n'+r'\textit{included}',
+            r'\textbf{churned}'+'\n'+r'\textit{included}']
     ax.set_yticks(range(len(ylab)))
     ax.set_yticklabels(ylab)
 
-    xTicks = [pd.datetime(2015,i,1) for i in range(2,13,2)] + [pd.datetime(2016,i,1) for i in range(2,7,2)]
+    xTicks = [pd.datetime(2015,i,1) for i in range(2,13,4)] + [pd.datetime(2016,i,1) for i in range(2,7,4)]
     ax.set_xticks(xTicks)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax.legend(handles=[obs,act,pred,sess[0]], ncol=2)

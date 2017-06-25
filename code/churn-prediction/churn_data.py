@@ -125,6 +125,7 @@ class ChurnData:
             y = self.y_split_val if y is None else y
 
         predicted = model.predict(X)
+        return predicted
         probs = model.predict_proba(X)
 
         accuracy = metrics.accuracy_score(y, predicted)

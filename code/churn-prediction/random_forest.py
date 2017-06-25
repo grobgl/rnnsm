@@ -48,8 +48,6 @@ def runGridSearch():
 
     return grid
 
-<<<<<<< HEAD
-=======
 def getResultGrid():
     grid = pickle.load(open(_RESULT_PATH+'grid_search_result.pkl', 'rb'))
     return grid
@@ -86,5 +84,3 @@ def getFeatureImportances():
 
     return importances.sort_values(by='importance', ascending=False)
 
-
->>>>>>> 34b77827c9e032081e37f2d6b191306debdd05e0
