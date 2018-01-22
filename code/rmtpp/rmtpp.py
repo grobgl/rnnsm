@@ -40,6 +40,19 @@ class Rmtpp:
     time_scale = .1
 
     def __init__(self, name, run, hidden_neurons=32, dense_neurons=32, n_sessions=32, w_scale=.15, predict_sequence=False):
+        '''
+        :name: used to label model on tensorboard
+        :run: run number to identify model on tensorboard
+        :n_sessions: number of sessions to include (at most)
+        
+        To run
+        - initialise this class
+        - run set_x_y
+        - run set_model
+        - run fit_model
+        - run get_scores to evaluate
+        '''
+        
         self.w_scale = w_scale
         self.predict_sequence = predict_sequence
         self.hidden_neurons = hidden_neurons
@@ -58,6 +71,10 @@ class Rmtpp:
         self.embeddings_metadata={'/home/georg/Workspace/fy_project/code/rnn/{}_metadata.tsv'.format(e) for e in self.embeddings}
 
     def set_x_y(self, min_n_sessions=0, n_sessions=100, preset='deltaNextDays_enc'):
+        '''
+        :preset: target value setting (presets defined in rmtpp_data). 'deltaNextDays_enc' sets target to return time in days with encoded values (opposed to one-hot) for all categorical features
+        initialises train and test data
+        '''
         self.x_train, \
         self.x_test, \
         self.x_train_unscaled, \
@@ -135,6 +152,9 @@ class Rmtpp:
 
 
     def set_model(self, lr=.001):
+        '''
+        defines the model used
+        '''
         self.lr = lr
         len_seq = self.x_train.shape[1]
         num_num_features = len(self.num_features)
@@ -208,6 +228,11 @@ class Rmtpp:
 
 
     def fit_model(self, initial_epoch=0):
+        '''
+        train the model
+        
+        :initail epoch: set if we continue training from specific epoch (to show up correctly on tensorboard)
+        '''
         log_file = '{}_lr{}_inp{}'.format(self.name, self.lr, self.x_train.shape[2])
 
         self.model.fit([self.x_train[:,:,self.device_index].astype('int32'),
